@@ -7,8 +7,8 @@
 Before implementing any code:
 
 - Read the repository root [`AGENT.md`](file:///home/blezecon/Code/textdistance-rust/AGENT.md).
-- Read [`rust-port/AGENT.md`](file:///home/blezecon/Code/textdistance-rust/rust-port/AGENT.md).
-- Read BOTH [`PERSON1.md`](file:///home/blezecon/Code/textdistance-rust/rust-port/PERSON1.md) and [`PERSON2.md`](file:///home/blezecon/Code/textdistance-rust/rust-port/PERSON2.md).
+- Read [`./AGENT.md`](file:///home/blezecon/Code/textdistance-rust/./AGENT.md).
+- Read BOTH [`PERSON1.md`](file:///home/blezecon/Code/textdistance-rust/./PERSON1.md) and [`PERSON2.md`](file:///home/blezecon/Code/textdistance-rust/./PERSON2.md).
 
 Understand the ownership boundaries before making changes.
 
@@ -229,17 +229,17 @@ Every file has exactly one owner. Shared files are only modified during bootstra
 
 | File | Owner | After Bootstrap |
 |---|---|---|
-| `rust-port/Cargo.toml` | Person 1 | **Sole Owner: Person 1** — Person 2 MUST NOT modify `Cargo.toml` directly. If you need a dependency: document crate, explain why needed, ask Person 1 to add it. |
-| `rust-port/src/lib.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/base.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/types.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/utils.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/simple.rs` | Person 1 | Do NOT modify. |
-| `rust-port/src/edit_based.rs` | Person 1 | Do NOT modify. Import `DamerauLevenshtein` and `JaroWinkler` from it. |
-| `rust-port/src/sequence_based.rs` | Person 1 | Do NOT modify. |
-| `rust-port/src/phonetic.rs` | Person 1 | Do NOT modify. |
-| `rust-port/src/token_based.rs` | **You** | You are the sole owner. Populate the empty stub. |
-| `rust-port/src/compression_based.rs` | **You** | You are the sole owner. Populate the empty stub. |
+| `./Cargo.toml` | Person 1 | **Sole Owner: Person 1** — Person 2 MUST NOT modify `Cargo.toml` directly. If you need a dependency: document crate, explain why needed, ask Person 1 to add it. |
+| `./src/lib.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/base.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/types.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/utils.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/simple.rs` | Person 1 | Do NOT modify. |
+| `./src/edit_based.rs` | Person 1 | Do NOT modify. Import `DamerauLevenshtein` and `JaroWinkler` from it. |
+| `./src/sequence_based.rs` | Person 1 | Do NOT modify. |
+| `./src/phonetic.rs` | Person 1 | Do NOT modify. |
+| `./src/token_based.rs` | **You** | You are the sole owner. Populate the empty stub. |
+| `./src/compression_based.rs` | **You** | You are the sole owner. Populate the empty stub. |
 
 ---
 
@@ -247,22 +247,22 @@ Every file has exactly one owner. Shared files are only modified during bootstra
 
 ### You MUST touch
 
-- `rust-port/src/token_based.rs` — your algorithm module
-- `rust-port/src/compression_based.rs` — your algorithm module
+- `./src/token_based.rs` — your algorithm module
+- `./src/compression_based.rs` — your algorithm module
 
 ### You MUST NOT touch
 
-- `rust-port/Cargo.toml` — owned solely by Person 1. Person 2 MUST NOT modify `Cargo.toml` directly. If you need a dependency, document it, explain why needed, and ask Person 1 to add it.
-- `rust-port/src/lib.rs` — already contains your module declarations
-- `rust-port/src/base.rs` — read-only (import from it)
-- `rust-port/src/types.rs` — read-only (import from it)
-- `rust-port/src/utils.rs` — read-only (import from it)
-- `rust-port/src/edit_based.rs` — read-only (import from it for MongeElkan)
-- `rust-port/src/simple.rs` — owned by Person 1
-- `rust-port/src/sequence_based.rs` — owned by Person 1
-- `rust-port/src/phonetic.rs` — owned by Person 1
+- `./Cargo.toml` — owned solely by Person 1. Person 2 MUST NOT modify `Cargo.toml` directly. If you need a dependency, document it, explain why needed, and ask Person 1 to add it.
+- `./src/lib.rs` — already contains your module declarations
+- `./src/base.rs` — read-only (import from it)
+- `./src/types.rs` — read-only (import from it)
+- `./src/utils.rs` — read-only (import from it)
+- `./src/edit_based.rs` — read-only (import from it for MongeElkan)
+- `./src/simple.rs` — owned by Person 1
+- `./src/sequence_based.rs` — owned by Person 1
+- `./src/phonetic.rs` — owned by Person 1
 - Any Python files under `textdistance/` — read-only reference
-- Any files outside `rust-port/`
+- Any files outside `./`
 
 ---
 
@@ -527,7 +527,7 @@ Test cases MUST cover (per root AGENT.md):
 
 ---
 
-## Coding Style (per AGENT.md and rust-port/AGENT.md)
+## Coding Style (per AGENT.md and ./AGENT.md)
 
 - Idiomatic Rust: iterators, slices, generics, traits, enums, Result
 - Safe Rust only — no `unsafe`

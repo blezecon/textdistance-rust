@@ -7,8 +7,8 @@
 Before implementing any code:
 
 - Read the repository root [`AGENT.md`](file:///home/blezecon/Code/textdistance-rust/AGENT.md).
-- Read [`rust-port/AGENT.md`](file:///home/blezecon/Code/textdistance-rust/rust-port/AGENT.md).
-- Read BOTH [`PERSON1.md`](file:///home/blezecon/Code/textdistance-rust/rust-port/PERSON1.md) and [`PERSON2.md`](file:///home/blezecon/Code/textdistance-rust/rust-port/PERSON2.md).
+- Read [`./AGENT.md`](file:///home/blezecon/Code/textdistance-rust/./AGENT.md).
+- Read BOTH [`PERSON1.md`](file:///home/blezecon/Code/textdistance-rust/./PERSON1.md) and [`PERSON2.md`](file:///home/blezecon/Code/textdistance-rust/./PERSON2.md).
 
 Understand the ownership boundaries before making changes.
 
@@ -221,17 +221,17 @@ Every file has exactly one owner. Shared files are only modified during bootstra
 
 | File | Owner | After Bootstrap |
 |---|---|---|
-| `rust-port/Cargo.toml` | Person 1 | **Sole Owner: Person 1** — Person 2 MUST NOT modify Cargo.toml directly. |
-| `rust-port/src/lib.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/base.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/types.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/utils.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
-| `rust-port/src/simple.rs` | Person 1 | Person 1 only. |
-| `rust-port/src/edit_based.rs` | Person 1 | Person 1 only. Person 2 imports from it. |
-| `rust-port/src/sequence_based.rs` | Person 1 | Person 1 only. |
-| `rust-port/src/phonetic.rs` | Person 1 | Person 1 only. |
-| `rust-port/src/token_based.rs` | Person 2 | Person 2 only. Person 1 creates empty stub during bootstrap. |
-| `rust-port/src/compression_based.rs` | Person 2 | Person 2 only. Person 1 creates empty stub during bootstrap. |
+| `./Cargo.toml` | Person 1 | **Sole Owner: Person 1** — Person 2 MUST NOT modify Cargo.toml directly. |
+| `./src/lib.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/base.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/types.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/utils.rs` | Person 1 (bootstrap) | **READ ONLY / Frozen** — neither developer nor AI assistant modifies after bootstrap unless fixing a critical bug. |
+| `./src/simple.rs` | Person 1 | Person 1 only. |
+| `./src/edit_based.rs` | Person 1 | Person 1 only. Person 2 imports from it. |
+| `./src/sequence_based.rs` | Person 1 | Person 1 only. |
+| `./src/phonetic.rs` | Person 1 | Person 1 only. |
+| `./src/token_based.rs` | Person 2 | Person 2 only. Person 1 creates empty stub during bootstrap. |
+| `./src/compression_based.rs` | Person 2 | Person 2 only. Person 1 creates empty stub during bootstrap. |
 
 ---
 
@@ -239,22 +239,22 @@ Every file has exactly one owner. Shared files are only modified during bootstra
 
 ### You MUST touch
 
-- `rust-port/Cargo.toml` — bootstrap only
-- `rust-port/src/lib.rs` — bootstrap only
-- `rust-port/src/base.rs` — bootstrap only
-- `rust-port/src/types.rs` — bootstrap only
-- `rust-port/src/utils.rs` — bootstrap only
-- `rust-port/src/simple.rs` — your algorithm module
-- `rust-port/src/edit_based.rs` — your algorithm module
-- `rust-port/src/sequence_based.rs` — your algorithm module
-- `rust-port/src/phonetic.rs` — your algorithm module
+- `./Cargo.toml` — bootstrap only
+- `./src/lib.rs` — bootstrap only
+- `./src/base.rs` — bootstrap only
+- `./src/types.rs` — bootstrap only
+- `./src/utils.rs` — bootstrap only
+- `./src/simple.rs` — your algorithm module
+- `./src/edit_based.rs` — your algorithm module
+- `./src/sequence_based.rs` — your algorithm module
+- `./src/phonetic.rs` — your algorithm module
 
 ### You MUST NOT touch (after bootstrap)
 
-- `rust-port/src/token_based.rs` — owned by Person 2
-- `rust-port/src/compression_based.rs` — owned by Person 2
+- `./src/token_based.rs` — owned by Person 2
+- `./src/compression_based.rs` — owned by Person 2
 - Any Python files under `textdistance/` — read-only reference
-- Any files outside `rust-port/`
+- Any files outside `./`
 
 ---
 
@@ -530,7 +530,7 @@ Test cases MUST cover (per root AGENT.md):
 
 ---
 
-## Coding Style (per AGENT.md and rust-port/AGENT.md)
+## Coding Style (per AGENT.md and ./AGENT.md)
 
 - Idiomatic Rust: iterators, slices, generics, traits, enums, Result
 - Safe Rust only — no `unsafe`
