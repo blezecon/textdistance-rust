@@ -1,0 +1,9 @@
+[package]
+name = "textdistance-rust"
+version = "0.1.0"
+edition = "2026"
+
+[dependencies]
+bzip2 = "0.5"
+flate2 = "1.0"
+xz2 = "0.1"

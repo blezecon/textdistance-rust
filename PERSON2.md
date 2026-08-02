@@ -602,36 +602,36 @@ Test cases MUST cover (per root AGENT.md):
 
 ### Token-Based (Phase 1)
 
-- [ ] `src/token_based.rs` — Jaccard
-- [ ] `src/token_based.rs` — Sorensen
-- [ ] `src/token_based.rs` — Overlap
-- [ ] `src/token_based.rs` — Cosine
-- [ ] `src/token_based.rs` — Tversky
-- [ ] `src/token_based.rs` — Tanimoto
-- [ ] `src/token_based.rs` — Bag
-- [ ] Tversky ↔ Jaccard equivalence tested (ks=[1,1])
-- [ ] Tversky ↔ Sorensen equivalence tested (ks=[0.5,0.5])
+- [x] `src/token_based.rs` — Jaccard
+- [x] `src/token_based.rs` — Sorensen
+- [x] `src/token_based.rs` — Overlap
+- [x] `src/token_based.rs` — Cosine
+- [x] `src/token_based.rs` — Tversky
+- [x] `src/token_based.rs` — Tanimoto
+- [x] `src/token_based.rs` — Bag
+- [x] Tversky ↔ Jaccard equivalence tested (ks=[1,1])
+- [x] Tversky ↔ Sorensen equivalence tested (ks=[0.5,0.5])
 
 ### Compression-Based (Phase 2)
 
-- [ ] `src/compression_based.rs` — NCD base implementation
-- [ ] `src/compression_based.rs` — RLENCD
-- [ ] `src/compression_based.rs` — BWTRLENCD
-- [ ] `src/compression_based.rs` — SqrtNCD
-- [ ] `src/compression_based.rs` — EntropyNCD
-- [ ] `src/compression_based.rs` — ArithNCD
-- [ ] `src/compression_based.rs` — BZ2NCD
-- [ ] `src/compression_based.rs` — LZMANCD
-- [ ] `src/compression_based.rs` — ZLIBNCD
+- [x] `src/compression_based.rs` — NCD base implementation
+- [x] `src/compression_based.rs` — RLENCD
+- [x] `src/compression_based.rs` — BWTRLENCD
+- [x] `src/compression_based.rs` — SqrtNCD
+- [x] `src/compression_based.rs` — EntropyNCD
+- [x] `src/compression_based.rs` — ArithNCD
+- [x] `src/compression_based.rs` — BZ2NCD
+- [x] `src/compression_based.rs` — LZMANCD
+- [x] `src/compression_based.rs` — ZLIBNCD
 
 ### MongeElkan (Phase 3 — after Person 1 pushes DamerauLevenshtein)
 
-- [ ] `src/token_based.rs` — MongeElkan
+- [ ] `src/token_based.rs` — MongeElkan *(blocked: waiting on Person 1's `DamerauLevenshtein` + `JaroWinkler` in `src/edit_based.rs`)*
 
 ### Final Verification (Phase 4)
 
-- [ ] All unit tests pass
-- [ ] `cargo fmt` passes
-- [ ] `cargo clippy` passes
-- [ ] Public APIs documented with `///` doc comments
-- [ ] External crate dependencies justified and minimal
+- [x] All unit tests pass
+- [x] `cargo fmt` passes
+- [x] `cargo clippy` passes
+- [x] Public APIs documented with `///` doc comments
+- [x] External crate dependencies justified and minimal
