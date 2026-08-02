@@ -626,7 +626,7 @@ Test cases MUST cover (per root AGENT.md):
 
 ### MongeElkan (Phase 3 — after Person 1 pushes DamerauLevenshtein)
 
-- [ ] `src/token_based.rs` — MongeElkan *(blocked: waiting on Person 1's `DamerauLevenshtein` + `JaroWinkler` in `src/edit_based.rs`)*
+- [x] `src/token_based.rs` — MongeElkan
 
 ### Final Verification (Phase 4)
 

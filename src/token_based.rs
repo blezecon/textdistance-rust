@@ -448,10 +448,126 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Bag {
     }
 }
 
-// ─── MongeElkan (TODO) ───────────────────────────────────────────────────────
+// ─── MongeElkan ──────────────────────────────────────────────────────────────
 
-// TODO: implement MongeElkan after DamerauLevenshtein is available from Person 1's edit_based.rs.
-// MongeElkan imports DamerauLevenshtein from crate::edit_based.
+/// Monge-Elkan similarity between two token sequences.
+///
+/// For each token `c1` in `seq1`, find the maximum similarity against every token
+/// `c2` in `seq2` using an inner algorithm (default: `DamerauLevenshtein`).
+/// The score is the mean of those per-token maxima divided by `len(seq1)`.
+///
+/// When `symmetric = true`, the result is averaged over both orderings
+/// (seq1→seq2 and seq2→seq1), matching Python's `permutations` behaviour.
+///
+/// The inner algorithm is `DamerauLevenshtein` with default parameters, matching
+/// the Python `_damerau_levenshtein = DamerauLevenshtein()` class attribute.
+///
+/// <https://www.academia.edu/200314/Generalized_Monge-Elkan_Method_for_Approximate_Text_String_Comparison>
+#[derive(Debug, Clone)]
+pub struct MongeElkan {
+    pub symmetric: bool,
+    pub qval: usize,
+}
+
+impl Default for MongeElkan {
+    fn default() -> Self {
+        Self {
+            symmetric: false,
+            qval: 1,
+        }
+    }
+}
+
+impl MongeElkan {
+    pub fn new(symmetric: bool, qval: usize) -> Self {
+        Self { symmetric, qval }
+    }
+
+    /// Tokenise a string into a Vec of token-Vecs according to `qval`.
+    ///
+    /// * `qval == 0` / `qval == 1` → each character is its own token (`Vec<char>` of length 1).
+    /// * `qval > 1`  → n-gram windows.
+    fn tokenise(s: &str, qval: usize) -> Vec<Vec<char>> {
+        let chars: Vec<char> = s.chars().collect();
+        if qval <= 1 {
+            chars.iter().map(|&c| vec![c]).collect()
+        } else {
+            find_ngrams(&chars, qval)
+        }
+    }
+
+    /// Core Monge-Elkan calculation: `seq` is the "outer" sequence,
+    /// `other` is the "inner" sequence we compare each token against.
+    ///
+    /// Uses `DamerauLevenshtein::default()` as inner algorithm, matching Python.
+    fn calc(seq: &[Vec<char>], other: &[Vec<char>]) -> f64 {
+        use crate::edit_based::DamerauLevenshtein;
+
+        if seq.is_empty() {
+            return 0.0;
+        }
+
+        let inner: DamerauLevenshtein<char> = DamerauLevenshtein::default();
+        let mut maxes: Vec<f64> = Vec::new();
+
+        for c1 in seq {
+            let mut max_sim = f64::NEG_INFINITY;
+            for c2 in other {
+                let sim = inner.similarity(c1, c2);
+                if sim > max_sim {
+                    max_sim = sim;
+                }
+            }
+            maxes.push(max_sim);
+        }
+
+        // Python: sum(maxes) / len(seq) / len(maxes)
+        // len(maxes) == len(seq) * len(sequences-1), but for 2 seqs it simplifies
+        // to sum(maxes) / len(seq) / len(seq)  (one comparison seq → each token maxed over other)
+        // Actually: for _calc(seq, *sequences) with one extra arg, len(maxes) = len(seq)*1
+        // so: sum / len(seq) / len(seq) => sum / len(seq)^2 ... let's follow Python exactly:
+        // maxes has len(seq)*len(sequences) entries; for 2 seqs = len(seq)*1 = len(seq)
+        // result = sum(maxes) / len(seq) / len(maxes)
+        //        = sum(maxes) / len(seq) / len(seq)   [since len(maxes)=len(seq) here]
+        let total: f64 = maxes.iter().sum();
+        total / seq.len() as f64 / maxes.len() as f64
+    }
+
+    /// Compute MongeElkan similarity between two strings.
+    pub fn similarity(&self, s1: &str, s2: &str) -> f64 {
+        // quick_answer equivalent for BaseSimilarity
+        if s1 == s2 {
+            return 1.0;
+        }
+        if s1.is_empty() || s2.is_empty() {
+            return 0.0;
+        }
+
+        let tokens1 = Self::tokenise(s1, self.qval);
+        let tokens2 = Self::tokenise(s2, self.qval);
+
+        if self.symmetric {
+            // average over both permutations: (calc(t1,t2) + calc(t2,t1)) / 2
+            let r1 = Self::calc(&tokens1, &tokens2);
+            let r2 = Self::calc(&tokens2, &tokens1);
+            (r1 + r2) / 2.0
+        } else {
+            Self::calc(&tokens1, &tokens2)
+        }
+    }
+
+    pub fn distance(&self, s1: &str, s2: &str) -> f64 {
+        1.0 - self.similarity(s1, s2)
+    }
+
+    pub fn normalized_similarity(&self, s1: &str, s2: &str) -> f64 {
+        self.similarity(s1, s2)
+    }
+
+    pub fn normalized_distance(&self, s1: &str, s2: &str) -> f64 {
+        self.distance(s1, s2)
+    }
+}
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -658,5 +774,54 @@ mod tests {
         let ns = alg.normalized_similarity(&s1, &s2);
         assert!((nd + ns - 1.0).abs() < 1e-9);
         assert!((0.0..=1.0).contains(&nd));
+    }
+
+    // ── MongeElkan ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_monge_elkan_identical() {
+        let alg = MongeElkan::default();
+        assert_eq!(alg.similarity("test", "test"), 1.0);
+    }
+
+    #[test]
+    fn test_monge_elkan_empty() {
+        let alg = MongeElkan::default();
+        assert_eq!(alg.similarity("test", ""), 0.0);
+        assert_eq!(alg.similarity("", "test"), 0.0);
+    }
+
+    #[test]
+    fn test_monge_elkan_normalized() {
+        let alg = MongeElkan::default();
+        let sim = alg.similarity("test", "text");
+        let dist = alg.distance("test", "text");
+        assert!((sim + dist - 1.0).abs() < 1e-9);
+        assert!((0.0..=1.0).contains(&sim));
+    }
+
+    #[test]
+    fn test_monge_elkan_basic_similarity() {
+        // With DamerauLevenshtein as inner algorithm:
+        // comparing char-by-char tokens, closer strings score higher
+        let alg = MongeElkan::default();
+        let close = alg.similarity("test", "text");
+        let far = alg.similarity("test", "xxxx");
+        assert!(close > far, "close={close} should be > far={far}");
+    }
+
+    #[test]
+    fn test_monge_elkan_symmetric() {
+        // symmetric=true should average both directions
+        let alg_sym = MongeElkan::new(true, 1);
+        let alg_asym = MongeElkan::default();
+        let s1 = "test";
+        let s2 = "testing";
+        let sym = alg_sym.similarity(s1, s2);
+        let asym = alg_asym.similarity(s1, s2);
+        // symmetric averages both directions, so they differ for unequal-length inputs
+        // both should be in [0,1]
+        assert!((0.0..=1.0).contains(&sym), "sym={sym}");
+        assert!((0.0..=1.0).contains(&asym), "asym={asym}");
     }
 }
