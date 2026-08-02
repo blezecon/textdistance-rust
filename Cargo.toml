@@ -2,6 +2,16 @@
 name = "textdistance-rust"
 version = "0.1.0"
 edition = "2024"
+description = "A Rust library for calculating text distance and string similarity algorithms."
+license = "MIT"
+repository = "https://github.com/blezecon/textdistance-rust"
+readme = "README.md"
+authors = [
+    "blezecon <dfyyasdd@gmail.com>",
+    "NoE114 <rajdey8787@gmail.com>"
+]
+keywords = ["text", "distance", "levenshtein", "string-similarity"]
+categories = ["text-processing", "algorithms"]
 
 [dependencies]
 bzip2 = "0.5"
