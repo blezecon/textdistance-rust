@@ -291,18 +291,18 @@ Read these before implementing. They are the specification:
 
 Create all shared infrastructure in a single commit. Person 2 cannot start until this is pushed.
 
-- [ ] **0.1** Create `Cargo.toml`
+- [x] **0.1** Create `Cargo.toml`
   - Name: `textdistance`
   - Edition: 2021
   - No external dependencies initially
-- [ ] **0.2** Create `src/types.rs`
+- [x] **0.2** Create `src/types.rs`
   - Define `SimFunc` as `Option<fn(&T, &T) -> f64>` or equivalent trait-based approach
   - Define `TestFunc` as `Option<fn(&T, &T) -> bool>` or equivalent trait-based approach
   - Python reference: `SimFunc = Optional[Callable[[T, T], float]]`, `TestFunc = Optional[Callable[[T, T], bool]]`
-- [ ] **0.3** Create `src/utils.rs`
+- [x] **0.3** Create `src/utils.rs`
   - Implement `find_ngrams<T: Clone>(input: &[T], n: usize) -> Vec<Vec<T>>`
   - Python reference: `find_ngrams(input_list, n)` returns `list(zip(*[input_list[i:] for i in range(n)]))`
-- [ ] **0.4** Create `src/base.rs` — the core trait hierarchy
+- [x] **0.4** Create `src/base.rs` — the core trait hierarchy
   - Define a trait (e.g., `DistanceMetric`) with methods:
     - `fn distance(&self, s1: &[T], s2: &[T]) -> f64`
     - `fn similarity(&self, s1: &[T], s2: &[T]) -> f64`
@@ -326,7 +326,7 @@ Create all shared infrastructure in a single commit. Person 2 cannot start until
     - `sum_counters` — Counter sum (`+` in Python)
     - `count_counters(counter, as_set) -> usize` — count elements (unique if as_set, total otherwise)
   - **Design note**: Use traits, not struct inheritance. Use a trait `DistanceMetric` with provided (default) methods where Python uses `Base`, and a separate trait or marker for `SimilarityMetric` where Python uses `BaseSimilarity`.
-- [ ] **0.5** Create `src/lib.rs` with ALL module declarations:
+- [x] **0.5** Create `src/lib.rs` with ALL module declarations:
   ```rust
   pub mod base;
   pub mod types;
@@ -338,15 +338,15 @@ Create all shared infrastructure in a single commit. Person 2 cannot start until
   pub mod token_based;
   pub mod compression_based;
   ```
-- [ ] **0.6** Create empty stub files for ALL algorithm modules:
+- [x] **0.6** Create empty stub files for ALL algorithm modules:
   - `src/simple.rs` — empty file (or `// TODO: Person 1`)
   - `src/edit_based.rs` — empty file (or `// TODO: Person 1`)
   - `src/sequence_based.rs` — empty file (or `// TODO: Person 1`)
   - `src/phonetic.rs` — empty file (or `// TODO: Person 1`)
   - `src/token_based.rs` — empty file (or `// TODO: Person 2`)
   - `src/compression_based.rs` — empty file (or `// TODO: Person 2`)
-- [ ] **0.7** Verify: `cargo check` passes, `cargo fmt` passes, `cargo clippy` passes
-- [ ] **0.8** **Commit and push**. Notify Person 2 that bootstrap is complete.
+- [x] **0.7** Verify: `cargo check` passes, `cargo fmt` passes, `cargo clippy` passes
+- [x] **0.8** **Commit and push**. Notify Person 2 that bootstrap is complete.
 
 > **IMPORTANT**: After this commit, `lib.rs` should NEVER need modification again.
 > All module declarations already exist. Both developers populate their own empty stub files.
@@ -356,73 +356,73 @@ Create all shared infrastructure in a single commit. Person 2 cannot start until
 
 These are trivial and exercise the base trait.
 
-- [ ] **1.1** Implement in `src/simple.rs`:
+- [x] **1.1** Implement in `src/simple.rs`:
   - `Prefix` — common prefix similarity (uses `_get_sequences`, `sim_test`)
   - `Postfix` — common postfix similarity (reverses inputs, delegates to Prefix)
   - `Length` — absolute length difference: `max(lengths) - min(lengths)`
   - `Identity` — returns 1 if identical, 0 otherwise; `maximum` is always 1
   - `Matrix` — lookup similarity from a hashmap; fallback to match/mismatch costs
-- [ ] **1.2** Add unit tests in `src/simple.rs`
+- [x] **1.2** Add unit tests in `src/simple.rs`
 
 ### Phase 2: Edit-Based Algorithms
 
 The largest module. Implement one algorithm at a time, per AGENT.md.
 
-- [ ] **2.1** `Hamming`
+- [x] **2.1** `Hamming`
   - Counts mismatched positions
   - Supports `truncate` option (zip vs zip_longest behavior)
   - Supports custom `test_func`
   - Python: ~30 lines
-- [ ] **2.2** `Levenshtein`
+- [x] **2.2** `Levenshtein`
   - Iterative 2-row DP implementation (`_cycled` method)
   - Do NOT implement the recursive version (it's not used in practice)
   - Supports custom `test_func`
   - Python: ~75 lines
-- [ ] **2.3** `DamerauLevenshtein`
+- [x] **2.3** `DamerauLevenshtein`
   - Two modes: `restricted` (OSA) and `unrestricted`
   - Restricted: DP with dict-based matrix (`_pure_python_restricted`)
   - Unrestricted: Wikipedia algorithm with `da` dictionary (`_pure_python_unrestricted`)
   - Supports custom `test_func`
   - Python: ~155 lines
   - **IMPORTANT**: Person 2's `MongeElkan` imports `DamerauLevenshtein`. Export it as `pub struct` in your module's public API.
-- [ ] **2.4** `Jaro` and `JaroWinkler`
+- [x] **2.4** `Jaro` and `JaroWinkler`
   - `JaroWinkler` is the full implementation. `Jaro` is `JaroWinkler` with `winklerize=false`.
   - Character window matching, transposition counting, prefix boosting
   - `long_tolerance` option for long strings
   - `maximum` is always 1
   - Python: ~120 lines
   - **IMPORTANT**: Person 2's `MongeElkan` test cases use `JaroWinkler`. Export it as `pub struct`.
-- [ ] **2.5** `StrCmp95`
+- [x] **2.5** `StrCmp95`
   - Similar to Jaro-Winkler but with phonetic/character-recognition partial credit matrix (`sp_mx`)
   - 36-entry similarity matrix for visually/phonetically similar characters (e.g., 'O' ↔ '0')
   - Converts to uppercase
   - `maximum` is always 1
   - Python: ~150 lines
-- [ ] **2.6** `NeedlemanWunsch`
+- [x] **2.6** `NeedlemanWunsch`
   - Global sequence alignment with 2D DP matrix
   - Custom `gap_cost` and `sim_func`
   - Overrides `normalized_distance` and `normalized_similarity` with custom formulas involving `minimum()`
   - `distance = -1 * similarity`
   - Python requires numpy — implement using pure Rust `Vec<Vec<f64>>`
   - Python: ~85 lines
-- [ ] **2.7** `Gotoh`
+- [x] **2.7** `Gotoh`
   - Extension of NeedlemanWunsch with affine gap penalties
   - Uses 3 DP matrices (d_mat, p_mat, q_mat)
   - `gap_open` and `gap_ext` parameters
   - Python requires numpy — implement using pure Rust `Vec<Vec<f64>>`
   - Python: ~80 lines
-- [ ] **2.8** `SmithWaterman`
+- [x] **2.8** `SmithWaterman`
   - Local sequence alignment with 2D DP matrix
   - Like NeedlemanWunsch but clamps to `max(0, ...)`
   - `maximum = min(len(s1), len(s2))`
   - Python requires numpy — implement using pure Rust `Vec<Vec<f64>>`
   - Python: ~55 lines
-- [ ] **2.9** `MLIPNS`
+- [x] **2.9** `MLIPNS`
   - Uses `Hamming` distance internally
   - Iteratively compares threshold against mismatches
   - `maximum` is always 1
   - Python: ~45 lines
-- [ ] **2.10** Add unit tests for each edit-based algorithm. Use test values from:
+- [x] **2.10** Add unit tests for each edit-based algorithm. Use test values from:
   - [`tests/test_edit/test_hamming.py`](file:///home/blezecon/Code/textdistance-rust/tests/test_edit/test_hamming.py)
   - [`tests/test_edit/test_levenshtein.py`](file:///home/blezecon/Code/textdistance-rust/tests/test_edit/test_levenshtein.py)
   - [`tests/test_edit/test_damerau_levenshtein.py`](file:///home/blezecon/Code/textdistance-rust/tests/test_edit/test_damerau_levenshtein.py)
@@ -436,21 +436,21 @@ The largest module. Implement one algorithm at a time, per AGENT.md.
 
 ### Phase 3: Sequence-Based Algorithms
 
-- [ ] **3.1** `LCSSeq` — Longest Common Subsequence
+- [x] **3.1** `LCSSeq` — Longest Common Subsequence
   - DP table implementation for 2 sequences (`_dynamic` method)
   - Returns the subsequence itself; `similarity()` returns its length
   - Uses `find_ngrams` from `utils.rs` via `_get_sequences`
   - Python: ~100 lines
-- [ ] **3.2** `LCSStr` — Longest Common Substring
+- [x] **3.2** `LCSStr` — Longest Common Substring
   - For 2 short strings: implement SequenceMatcher-equivalent (find longest match)
   - For N strings or long strings: n-gram search approach (`_custom` method)
   - Python: ~40 lines
-- [ ] **3.3** `RatcliffObershelp` — Gestalt Pattern Matching
+- [x] **3.3** `RatcliffObershelp` — Gestalt Pattern Matching
   - Recursive: find LCSStr, then recurse on left and right remainders
   - `maximum` is always 1
   - Uses `LCSStr` internally
   - Python: ~40 lines
-- [ ] **3.4** Add unit tests using values from:
+- [x] **3.4** Add unit tests using values from:
   - [`tests/test_sequence/test_lcsseq.py`](file:///home/blezecon/Code/textdistance-rust/tests/test_sequence/test_lcsseq.py)
   - [`tests/test_sequence/test_lcsstr.py`](file:///home/blezecon/Code/textdistance-rust/tests/test_sequence/test_lcsstr.py)
 
@@ -571,37 +571,37 @@ Test cases MUST cover (per root AGENT.md):
 
 ### Bootstrap (Phase 0)
 
-- [ ] `Cargo.toml` created
-- [ ] `src/lib.rs` created with ALL 9 module declarations
-- [ ] `src/types.rs` implemented
-- [ ] `src/utils.rs` implemented (`find_ngrams`)
-- [ ] `src/base.rs` implemented (traits + counter helpers)
-- [ ] Empty stub files for all 6 algorithm modules created
-- [ ] `cargo check` passes
-- [ ] `cargo fmt` passes
-- [ ] `cargo clippy` passes
-- [ ] Committed and pushed
+- [x] `Cargo.toml` created
+- [x] `src/lib.rs` created with ALL 9 module declarations
+- [x] `src/types.rs` implemented
+- [x] `src/utils.rs` implemented (`find_ngrams`)
+- [x] `src/base.rs` implemented (traits + counter helpers)
+- [x] Empty stub files for all 6 algorithm modules created
+- [x] `cargo check` passes
+- [x] `cargo fmt` passes
+- [x] `cargo clippy` passes
+- [x] Committed and pushed
 
 ### Algorithms (Phases 1–4)
 
-- [ ] `src/simple.rs` — Prefix
-- [ ] `src/simple.rs` — Postfix
-- [ ] `src/simple.rs` — Length
-- [ ] `src/simple.rs` — Identity
-- [ ] `src/simple.rs` — Matrix
-- [ ] `src/edit_based.rs` — Hamming
-- [ ] `src/edit_based.rs` — Levenshtein
-- [ ] `src/edit_based.rs` — DamerauLevenshtein (restricted + unrestricted)
-- [ ] `src/edit_based.rs` — Jaro
-- [ ] `src/edit_based.rs` — JaroWinkler
-- [ ] `src/edit_based.rs` — StrCmp95
-- [ ] `src/edit_based.rs` — NeedlemanWunsch
-- [ ] `src/edit_based.rs` — Gotoh
-- [ ] `src/edit_based.rs` — SmithWaterman
-- [ ] `src/edit_based.rs` — MLIPNS
-- [ ] `src/sequence_based.rs` — LCSSeq
-- [ ] `src/sequence_based.rs` — LCSStr
-- [ ] `src/sequence_based.rs` — RatcliffObershelp
+- [x] `src/simple.rs` — Prefix
+- [x] `src/simple.rs` — Postfix
+- [x] `src/simple.rs` — Length
+- [x] `src/simple.rs` — Identity
+- [x] `src/simple.rs` — Matrix
+- [x] `src/edit_based.rs` — Hamming
+- [x] `src/edit_based.rs` — Levenshtein
+- [x] `src/edit_based.rs` — DamerauLevenshtein (restricted + unrestricted)
+- [x] `src/edit_based.rs` — Jaro
+- [x] `src/edit_based.rs` — JaroWinkler
+- [x] `src/edit_based.rs` — StrCmp95
+- [x] `src/edit_based.rs` — NeedlemanWunsch
+- [x] `src/edit_based.rs` — Gotoh
+- [x] `src/edit_based.rs` — SmithWaterman
+- [x] `src/edit_based.rs` — MLIPNS
+- [x] `src/sequence_based.rs` — LCSSeq
+- [x] `src/sequence_based.rs` — LCSStr
+- [x] `src/sequence_based.rs` — RatcliffObershelp
 - [ ] `src/phonetic.rs` — MRA
 - [ ] `src/phonetic.rs` — Editex
 
