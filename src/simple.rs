@@ -25,7 +25,9 @@ use crate::utils::find_ngrams;
 /// equality is used. For `qval > 1`, q-grams are compared by equality.
 #[derive(Debug, Clone, Copy)]
 pub struct Prefix<T> {
+    /// q-gram size; `1` treats the input as individual elements.
     pub qval: usize,
+    /// Optional element equality test, defaulting to `PartialEq`.
     pub sim_test: Option<fn(&T, &T) -> bool>,
 }
 
@@ -175,9 +177,13 @@ impl<T: PartialEq> Base<T> for Identity {
 /// usage.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Matrix<T: Hash + Eq> {
+    /// Explicit substitution matrix mapping `(a, b)` pairs to scores.
     pub mat: Option<HashMap<(T, T), f64>>,
+    /// Score for aligning two mismatching elements.
     pub mismatch_cost: f64,
+    /// Score for aligning two matching elements.
     pub match_cost: f64,
+    /// Whether the matrix is symmetric (`mat(a, b) == mat(b, a)`).
     pub symmetric: bool,
 }
 

@@ -135,8 +135,11 @@ fn damerau_unrestricted<U: Hash + Eq + Clone>(
 /// The `external` flag from Python is not ported.
 #[derive(Debug, Clone, Copy)]
 pub struct Hamming<T> {
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
+    /// Optional element similarity test, defaulting to equality.
     pub test_func: TestFunc<T>,
+    /// Whether to truncate to the shorter sequence before comparing.
     pub truncate: bool,
 }
 
@@ -195,7 +198,9 @@ impl<T: Clone + PartialEq> Base<T> for Hamming<T> {
 /// equality (the Python `test_func` operates on whole q-gram tuples).
 #[derive(Debug, Clone, Copy)]
 pub struct Levenshtein<T> {
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
+    /// Optional element similarity test, defaulting to equality.
     pub test_func: TestFunc<T>,
 }
 
@@ -240,8 +245,11 @@ impl<T: Clone + PartialEq> Base<T> for Levenshtein<T> {
 /// Person 2's `MongeElkan` imports this type.
 #[derive(Debug, Clone, Copy)]
 pub struct DamerauLevenshtein<T> {
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
+    /// Optional element similarity test, defaulting to equality.
     pub test_func: TestFunc<T>,
+    /// Whether to use the restricted (optimal string alignment) variant.
     pub restricted: bool,
 }
 
@@ -392,8 +400,11 @@ fn jaro_core<U: PartialEq>(
 /// Person 2's `MongeElkan` imports this type for its test cases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JaroWinkler {
+    /// Whether long-sequence boosts (prefix match bonus) are enabled.
     pub long_tolerance: bool,
+    /// Whether to apply the Winkler prefix bonus on top of Jaro.
     pub winklerize: bool,
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
 }
 
@@ -437,7 +448,9 @@ impl<T: Clone + PartialEq> Base<T> for JaroWinkler {
 /// Jaro similarity measure: [`JaroWinkler`] with `winklerize = false`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Jaro {
+    /// Whether long-sequence boosts (prefix match bonus) are enabled.
     pub long_tolerance: bool,
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
 }
 
@@ -544,6 +557,7 @@ fn strcmp_preprocess(s: &[char]) -> Vec<char> {
 /// * `long_strings` – enable the optional long-string boost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StrCmp95 {
+    /// Whether to enable the optional long-string boost.
     pub long_strings: bool,
 }
 
@@ -717,8 +731,11 @@ fn mlipns_core(ham: f64, maxlen: usize, threshold: f64, maxmismatches: usize) ->
 /// The maximum is always `1.0`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MLIPNS {
+    /// Similarity threshold above which elements are considered matching.
     pub threshold: f64,
+    /// Maximum number of allowed mismatches before the score drops to 0.
     pub maxmismatches: usize,
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
 }
 
@@ -840,8 +857,11 @@ fn global_normalized_similarity(similarity: f64, minimum: f64, maximum: f64) -> 
 /// (`-max_len * gap_cost`) and `maximum` (`max_len`).
 #[derive(Debug, Clone, Copy)]
 pub struct NeedlemanWunsch<T> {
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
+    /// Penalty for opening or extending a gap.
     pub gap_cost: f64,
+    /// Element similarity function used to score aligned pairs.
     pub sim_func: SimFunc<T>,
 }
 
@@ -979,9 +999,13 @@ fn gotoh_dp<U>(
 /// * `qval`     – q-gram tokenization (1 = per element, the default).
 #[derive(Debug, Clone, Copy)]
 pub struct Gotoh<T> {
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
+    /// Penalty for opening a gap.
     pub gap_open: f64,
+    /// Penalty for extending an existing gap.
     pub gap_ext: f64,
+    /// Element similarity function used to score aligned pairs.
     pub sim_func: SimFunc<T>,
 }
 
@@ -1089,8 +1113,11 @@ fn smith_waterman_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) 
 /// mirroring the Python `quick_answer`.
 #[derive(Debug, Clone, Copy)]
 pub struct SmithWaterman<T> {
+    /// q-gram size; `1` compares elements individually.
     pub qval: usize,
+    /// Penalty for opening or extending a gap.
     pub gap_cost: f64,
+    /// Element similarity function used to score aligned pairs.
     pub sim_func: SimFunc<T>,
 }
 

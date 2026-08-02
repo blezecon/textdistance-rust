@@ -165,7 +165,9 @@ fn lcs_seq_len_recursive<U: Clone + PartialEq>(
 ///   compares elements by equality, mirroring the Python reference.
 #[derive(Debug, Clone, Copy)]
 pub struct LCSSeq<T> {
+    /// q-gram size; `1` treats the input as individual elements.
     pub qval: usize,
+    /// Optional element similarity test, defaulting to equality.
     pub test_func: TestFunc<T>,
 }
 
@@ -224,6 +226,7 @@ impl<T: Clone + PartialEq> Base<T> for LCSSeq<T> {
 /// * `qval` – q-gram tokenization (1 = per element, the default).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LCSStr {
+    /// q-gram size; `1` treats the input as individual elements.
     pub qval: usize,
 }
 
@@ -290,6 +293,7 @@ fn ratcliff_find<U: Clone + PartialEq>(s1: &[U], s2: &[U]) -> usize {
 /// * `qval` – q-gram tokenization (1 = per element, the default).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RatcliffObershelp {
+    /// q-gram size; `1` treats the input as individual elements.
     pub qval: usize,
 }
 
