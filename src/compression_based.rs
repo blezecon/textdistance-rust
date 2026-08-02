@@ -10,10 +10,10 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use bzip2::write::BzEncoder;
 use bzip2::Compression as BzCompression;
-use flate2::write::ZlibEncoder;
+use bzip2::write::BzEncoder;
 use flate2::Compression as ZlibCompression;
+use flate2::write::ZlibEncoder;
 use xz2::write::XzEncoder;
 
 // ─── NCD trait ───────────────────────────────────────────────────────────────
@@ -414,8 +414,8 @@ impl ArithNcd {
                 let new_start_n = start_n * d + cum * width_n;
                 let new_width_n = w * width_n;
                 let new_denom = denom * d; // not actually stored — we normalise
-                                           // reduce: divide start and width by gcd with new_denom
-                                           // For simplicity, just keep exact and let them grow
+                // reduce: divide start and width by gcd with new_denom
+                // For simplicity, just keep exact and let them grow
                 start_n = new_start_n;
                 width_n = new_width_n;
                 let _ = new_denom;

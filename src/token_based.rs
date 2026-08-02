@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use crate::base::{
-    count_counters, get_counter, intersect_counters, quick_answer_similarity, union_counters, Base,
+    Base, count_counters, get_counter, intersect_counters, quick_answer_similarity, union_counters,
 };
 use crate::utils::find_ngrams;
 
