@@ -1,6 +1,6 @@
 [package]
 name = "textdistance-rust"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A Rust library for calculating text distance and string similarity algorithms."
 license = "MIT"

@@ -483,7 +483,7 @@ cargo fmt && cargo clippy && cargo test
 
 The following items are **obviously incomplete** based on the repository state:
 
-- [ ] **Publish to crates.io** — the crate is not yet published (version `0.1.0`, no publish metadata beyond `Cargo.toml`)
+- [ ] **Publish to crates.io** — the crate is not yet published (version `0.1.1`, no publish metadata beyond `Cargo.toml`)
 - [ ] **`MongeElkan` checklist** — the `PERSON2.md` checklist shows MongeElkan as complete (`[x]`), but `MongeElkan` does **not** implement the `Base<T>` trait; it exposes string-level methods directly (`similarity(&str, &str)`, `distance(&str, &str)`). Full trait integration is not done.
 - [ ] **Benchmarks** — no `benches/` directory exists; performance characteristics are not measured
 - [ ] **Comparison scripts** — no scripts exist to compare Rust output against Python output programmatically

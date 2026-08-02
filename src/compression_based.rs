@@ -435,6 +435,21 @@ impl EntropyNcd {
 
 // ─── ArithNCD ────────────────────────────────────────────────────────────────
 
+/// Euclidean GCD for u128 — used by ArithNcd to reduce fractions.
+fn gcd(mut a: u128, mut b: u128) -> u128 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    if a == 0 { 1 } else { a }
+}
+
+/// GCD of three values.
+fn gcd3(a: u128, b: u128, c: u128) -> u128 {
+    gcd(gcd(a, b), c)
+}
+
 /// Arithmetic Coding NCD.
 ///
 /// Builds a probability model using exact rational arithmetic (represented as
@@ -509,57 +524,76 @@ impl ArithNcd {
 
         let probs = self.make_probs(data);
 
-        // start=0/1, width=1/1  (as num/denom pairs with shared large denominator)
-        // We track: interval_start (numerator), interval_width (numerator), denominator
-        // All as u128 — sufficient for small test strings.
-        let mut start_n: u128 = 0; // start numerator
-        let mut width_n: u128 = 1; // width numerator  (= 1 * initial_denom)
-        let denom = if probs.is_empty() { 1u128 } else { probs[0].3 };
-        width_n *= denom; // start: start=0/denom, width=denom/denom
+        if probs.is_empty() || seq.is_empty() {
+            return 0;
+        }
+
+        // We represent the arithmetic-coding interval as the fraction
+        //   start = start_n / denom
+        //   width = width_n / denom
+        // where `denom` is tracked explicitly and kept in lowest terms by
+        // dividing all three values by their GCD after every step.
+        //
+        // Without this reduction the denominator grows as total_letters^len(seq),
+        // which overflows u128 for strings longer than ~20 characters (e.g.
+        // 62^100 >> 2^128), producing denom == 0 and the divide-by-zero panic.
+        // Python avoids the problem because fractions.Fraction reduces
+        // automatically.
+        let initial_denom = probs[0].3;
+        let mut start_n: u128 = 0;
+        let mut width_n: u128 = initial_denom; // 1 expressed as initial_denom/initial_denom
+        let mut denom: u128 = initial_denom;
 
         for &sym in &seq {
             if let Some(&(_, cum, w, d)) = probs.iter().find(|&&(s, _, _, _)| s == sym) {
-                // new_start = start + cum/d * width  (all over denom*d)
-                // new_width = w/d * width
-                let new_start_n = start_n * d + cum * width_n;
-                let new_width_n = w * width_n;
-                let new_denom = denom * d; // not actually stored — we normalise
-                // reduce: divide start and width by gcd with new_denom
-                // For simplicity, just keep exact and let them grow
-                start_n = new_start_n;
-                width_n = new_width_n;
-                let _ = new_denom;
+                // new_start = start + (cum/d) * width
+                //           = (start_n * d + cum * width_n) / (denom * d)
+                // new_width = (w/d) * width
+                //           = (w * width_n) / (denom * d)
+                let new_start = start_n * d + cum * width_n;
+                let new_width = w * width_n;
+                let new_denom = denom * d;
+
+                // Reduce by GCD — mirrors fractions.Fraction normalisation.
+                let g = gcd3(new_start, new_width, new_denom);
+                start_n = new_start / g;
+                width_n = new_width / g;
+                denom = new_denom / g;
             }
         }
 
-        // Find smallest fraction p/q in [start, start+width] with smallest numerator
-        // Python: output_denominator doubles until found
-        // We replicate: output_fraction = 0/1, denominator doubles
-        let total_denom = {
-            // Reconstruct actual denominator
-            let mut d: u128 = 1;
-            for _ in &seq {
-                d *= probs[0].3;
-            }
-            d
-        };
+        if denom == 0 || width_n == 0 {
+            return 0;
+        }
 
+        // Find the smallest-numerator fraction num/output_denom in
+        // [start_n/denom, (start_n+width_n)/denom).
+        // Python doubles output_denominator until the condition holds.
         let mut output_denom: u128 = 1;
         loop {
-            // output_numerator = 1 + floor(start_n * output_denom / total_denom)
-            let num = 1 + (start_n * output_denom) / total_denom;
-            // check: start_n/total_denom <= num/output_denom < (start_n+width_n)/total_denom
-            if num * total_denom >= start_n * output_denom
-                && num * total_denom < (start_n + width_n) * output_denom
-            {
+            // num = 1 + floor(start_n * output_denom / denom)
+            let (prod, overflowed) = start_n.overflowing_mul(output_denom);
+            if overflowed {
+                break;
+            }
+            let num = 1 + prod / denom;
+
+            // Check start_n/denom <= num/output_denom < (start_n+width_n)/denom
+            let lhs = num.saturating_mul(denom);
+            let rhs_lo = start_n.saturating_mul(output_denom);
+            let rhs_hi = (start_n.saturating_add(width_n)).saturating_mul(output_denom);
+            if lhs >= rhs_lo && lhs < rhs_hi {
                 return num;
             }
+
             output_denom = output_denom.saturating_mul(2);
             if output_denom > (1u128 << 100) {
-                // Overflow guard — return approximation
-                return num;
+                break;
             }
         }
+
+        // Fallback: return the best approximation without panicking.
+        1 + start_n / denom
     }
 
     fn compress_size(&self, data: &[u8]) -> f64 {
