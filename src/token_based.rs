@@ -5,9 +5,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use crate::base::{
-    Base, count_counters, get_counter, intersect_counters, quick_answer_similarity, union_counters,
-};
+use crate::base::{Base, get_counter, quick_answer_similarity};
 use crate::utils::find_ngrams;
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -27,6 +25,57 @@ pub fn get_sequence_counter<T: Hash + Eq + Clone>(
     } else {
         let ngrams = find_ngrams(seq, qval);
         get_counter(&ngrams)
+    }
+}
+
+/// Build a slice-borrowing frequency counter for `seq` tokenised by `qval`.
+///
+/// Borrows slices directly from `seq` as map keys (`&[T]`), eliminating heap key allocations.
+pub fn get_slice_counter<T: Hash + Eq>(seq: &[T], qval: usize) -> HashMap<&[T], usize> {
+    let mut map = HashMap::new();
+    if seq.is_empty() {
+        return map;
+    }
+    let n = seq.len();
+    if qval <= 1 {
+        for i in 0..n {
+            *map.entry(&seq[i..i + 1]).or_insert(0) += 1;
+        }
+    } else if n >= qval {
+        for i in 0..=n - qval {
+            *map.entry(&seq[i..i + qval]).or_insert(0) += 1;
+        }
+    }
+    map
+}
+
+/// Compute (c1_count, c2_count, intersection_count) from two slice counters without allocating.
+pub fn compute_counts<T: Hash + Eq>(
+    c1: &HashMap<&[T], usize>,
+    c2: &HashMap<&[T], usize>,
+    as_set: bool,
+) -> (f64, f64, f64) {
+    if as_set {
+        let c1_cnt = c1.len() as f64;
+        let c2_cnt = c2.len() as f64;
+        let mut inter_cnt = 0f64;
+        for k in c1.keys() {
+            if c2.contains_key(k) {
+                inter_cnt += 1.0;
+            }
+        }
+        (c1_cnt, c2_cnt, inter_cnt)
+    } else {
+        let mut c1_cnt = 0usize;
+        let mut inter_cnt = 0usize;
+        for (k, &v1) in c1 {
+            c1_cnt += v1;
+            if let Some(&v2) = c2.get(k) {
+                inter_cnt += v1.min(v2);
+            }
+        }
+        let c2_cnt: usize = c2.values().sum();
+        (c1_cnt as f64, c2_cnt as f64, inter_cnt as f64)
     }
 }
 
@@ -65,14 +114,11 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Jaccard {
             return ans;
         }
 
-        let c1 = get_sequence_counter(s1, self.qval);
-        let c2 = get_sequence_counter(s2, self.qval);
+        let c1 = get_slice_counter(s1, self.qval);
+        let c2 = get_slice_counter(s2, self.qval);
 
-        let intersection = intersect_counters(&c1, &c2);
-        let inter_cnt = count_counters(&intersection, self.as_set) as f64;
-
-        let union = union_counters(&c1, &c2);
-        let union_cnt = count_counters(&union, self.as_set) as f64;
+        let (c1_cnt, c2_cnt, inter_cnt) = compute_counts(&c1, &c2, self.as_set);
+        let union_cnt = c1_cnt + c2_cnt - inter_cnt;
 
         if union_cnt == 0.0 {
             1.0
@@ -118,15 +164,17 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Sorensen {
             return ans;
         }
 
-        let c1 = get_sequence_counter(s1, self.qval);
-        let c2 = get_sequence_counter(s2, self.qval);
+        let c1 = get_slice_counter(s1, self.qval);
+        let c2 = get_slice_counter(s2, self.qval);
 
-        let count =
-            count_counters(&c1, self.as_set) as f64 + count_counters(&c2, self.as_set) as f64;
-        let intersection = intersect_counters(&c1, &c2);
-        let inter_cnt = count_counters(&intersection, self.as_set) as f64;
+        let (c1_cnt, c2_cnt, inter_cnt) = compute_counts(&c1, &c2, self.as_set);
+        let total_cnt = c1_cnt + c2_cnt;
 
-        2.0 * inter_cnt / count
+        if total_cnt == 0.0 {
+            1.0
+        } else {
+            2.0 * inter_cnt / total_cnt
+        }
     }
 
     fn maximum(&self, _s1: &[T], _s2: &[T]) -> f64 {
@@ -166,15 +214,11 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Overlap {
             return ans;
         }
 
-        let c1 = get_sequence_counter(s1, self.qval);
-        let c2 = get_sequence_counter(s2, self.qval);
+        let c1 = get_slice_counter(s1, self.qval);
+        let c2 = get_slice_counter(s2, self.qval);
 
-        let intersection = intersect_counters(&c1, &c2);
-        let inter_cnt = count_counters(&intersection, self.as_set) as f64;
-
-        let cnt1 = count_counters(&c1, self.as_set) as f64;
-        let cnt2 = count_counters(&c2, self.as_set) as f64;
-        let min_cnt = cnt1.min(cnt2);
+        let (c1_cnt, c2_cnt, inter_cnt) = compute_counts(&c1, &c2, self.as_set);
+        let min_cnt = c1_cnt.min(c2_cnt);
 
         if min_cnt == 0.0 {
             0.0
@@ -220,21 +264,16 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Cosine {
             return ans;
         }
 
-        let c1 = get_sequence_counter(s1, self.qval);
-        let c2 = get_sequence_counter(s2, self.qval);
+        let c1 = get_slice_counter(s1, self.qval);
+        let c2 = get_slice_counter(s2, self.qval);
 
-        let intersection = intersect_counters(&c1, &c2);
-        let inter_cnt = count_counters(&intersection, self.as_set) as f64;
+        let (c1_cnt, c2_cnt, inter_cnt) = compute_counts(&c1, &c2, self.as_set);
 
-        let cnt1 = count_counters(&c1, self.as_set) as f64;
-        let cnt2 = count_counters(&c2, self.as_set) as f64;
-
-        // product of all sequence counts, then take N-th root (N = 2 sequences)
-        let prod = cnt1 * cnt2;
+        let prod = c1_cnt * c2_cnt;
         if prod == 0.0 {
             0.0
         } else {
-            inter_cnt / prod.powf(1.0 / 2.0)
+            inter_cnt / prod.sqrt()
         }
     }
 
@@ -292,27 +331,21 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Tversky {
             return ans;
         }
 
-        let c1 = get_sequence_counter(s1, self.qval);
-        let c2 = get_sequence_counter(s2, self.qval);
+        let c1 = get_slice_counter(s1, self.qval);
+        let c2 = get_slice_counter(s2, self.qval);
 
-        let intersection = intersect_counters(&c1, &c2);
-        let inter_cnt = count_counters(&intersection, self.as_set) as f64;
+        let (s1_cnt, s2_cnt, inter_cnt) = compute_counts(&c1, &c2, self.as_set);
+        let seq_counts = [s1_cnt, s2_cnt];
 
-        let seq_counts = [
-            count_counters(&c1, self.as_set) as f64,
-            count_counters(&c2, self.as_set) as f64,
-        ];
-
-        // ks has exactly 2 weights for the 2-sequence case
         let ks: Vec<f64> = self
             .ks
             .iter()
             .copied()
             .chain(std::iter::repeat(1.0))
-            .take(seq_counts.len())
+            .take(2)
             .collect();
 
-        if seq_counts.len() != 2 || self.bias.is_none() {
+        if self.bias.is_none() {
             // General formula
             let mut result = inter_cnt;
             for (k, &s) in ks.iter().zip(seq_counts.iter()) {
@@ -325,7 +358,6 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Tversky {
             }
         } else if let Some(bias) = self.bias {
             // Bias-corrected two-sequence formula
-            let (s1_cnt, s2_cnt) = (seq_counts[0], seq_counts[1]);
             let (alpha, beta) = (ks[0], ks[1]);
             let a_val = s1_cnt.min(s2_cnt);
             let b_val = s1_cnt.max(s2_cnt);
@@ -418,27 +450,12 @@ impl<T: Hash + Eq + Clone + PartialEq> Base<T> for Bag {
             return 0.0;
         }
 
-        let c1 = get_sequence_counter(s1, self.qval);
-        let c2 = get_sequence_counter(s2, self.qval);
+        let c1 = get_slice_counter(s1, self.qval);
+        let c2 = get_slice_counter(s2, self.qval);
 
-        let intersection = intersect_counters(&c1, &c2);
-
-        // subtract intersection from each counter element-wise
-        let remainder1: f64 = c1
-            .iter()
-            .map(|(k, &v)| {
-                let inter_v = intersection.get(k).copied().unwrap_or(0);
-                v.saturating_sub(inter_v) as f64
-            })
-            .sum();
-
-        let remainder2: f64 = c2
-            .iter()
-            .map(|(k, &v)| {
-                let inter_v = intersection.get(k).copied().unwrap_or(0);
-                v.saturating_sub(inter_v) as f64
-            })
-            .sum();
+        let (c1_cnt, c2_cnt, inter_cnt) = compute_counts(&c1, &c2, false);
+        let remainder1 = c1_cnt - inter_cnt;
+        let remainder2 = c2_cnt - inter_cnt;
 
         remainder1.max(remainder2)
     }

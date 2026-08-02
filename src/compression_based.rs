@@ -103,7 +103,7 @@ impl NcdBase for Rlencd {
 }
 
 impl Rlencd {
-    /// Compute RLENCD distance between two string slices.
+    /// Compute RLENCD distance between two string slices (char-level, matching Python).
     pub fn distance(&self, s1: &str, s2: &str) -> f64 {
         self.ncd(s1.as_bytes(), s2.as_bytes())
     }
@@ -149,15 +149,18 @@ impl Bwtrlencd {
         Self { terminator }
     }
 
-    fn bwt_compress_bytes(&self, data: &[u8]) -> Vec<u8> {
-        let mut s: Vec<u8> = data.to_vec();
-        let term = self.terminator as u8;
+    /// BWT + RLE over a **char** sequence (matches Python's string-level operation).
+    ///
+    /// Python `BWTRLENCD._compress` operates on Python str (Unicode code points),
+    /// sorts rotations lexicographically over characters, and applies RLE over chars.
+    fn bwt_compress_chars(&self, chars: &[char]) -> usize {
+        let mut s: Vec<char> = chars.to_vec();
 
         if s.is_empty() {
-            return vec![term];
+            return 1; // just the terminator
         }
-        if !s.contains(&term) {
-            s.push(term);
+        if !s.contains(&self.terminator) {
+            s.push(self.terminator);
         }
         let n = s.len();
         let mut rotations: Vec<usize> = (0..n).collect();
@@ -171,22 +174,56 @@ impl Bwtrlencd {
             }
             std::cmp::Ordering::Equal
         });
-        let bwt: Vec<u8> = rotations.iter().map(|&i| s[(i + n - 1) % n]).collect();
+        // Last column of BWT
+        let bwt: Vec<char> = rotations.iter().map(|&i| s[(i + n - 1) % n]).collect();
 
-        // Now apply RLE on the BWT result
-        Rlencd::compress_chars(&bwt).into_bytes()
+        // Apply RLE (same as RLENCD) and return the compressed length in chars
+        let mut rle_len = 0usize;
+        let mut i = 0;
+        while i < bwt.len() {
+            let ch = bwt[i];
+            let mut count = 1usize;
+            while i + count < bwt.len() && bwt[i + count] == ch {
+                count += 1;
+            }
+            if count > 2 {
+                // "{count}{ch}" — count digits + 1 char
+                rle_len += count.to_string().len() + 1;
+            } else {
+                rle_len += count; // 1 or 2 identical chars
+            }
+            i += count;
+        }
+        rle_len
     }
-}
 
-impl NcdBase for Bwtrlencd {
-    fn get_size(&self, data: &[u8]) -> f64 {
-        self.bwt_compress_bytes(data).len() as f64
+    /// NCD over two strings at char level (matching Python).
+    fn ncd_str(&self, s1: &str, s2: &str) -> f64 {
+        let c1: Vec<char> = s1.chars().collect();
+        let c2: Vec<char> = s2.chars().collect();
+
+        // Concatenate char sequences
+        let mut ab: Vec<char> = Vec::with_capacity(c1.len() + c2.len());
+        ab.extend_from_slice(&c1);
+        ab.extend_from_slice(&c2);
+        let mut ba: Vec<char> = Vec::with_capacity(c1.len() + c2.len());
+        ba.extend_from_slice(&c2);
+        ba.extend_from_slice(&c1);
+
+        let concat_size = self
+            .bwt_compress_chars(&ab)
+            .min(self.bwt_compress_chars(&ba)) as f64;
+        let sz1 = self.bwt_compress_chars(&c1) as f64;
+        let sz2 = self.bwt_compress_chars(&c2) as f64;
+        let max_size = sz1.max(sz2);
+        if max_size == 0.0 {
+            return 0.0;
+        }
+        (concat_size - sz1.min(sz2)) / max_size
     }
-}
 
-impl Bwtrlencd {
     pub fn distance(&self, s1: &str, s2: &str) -> f64 {
-        self.ncd(s1.as_bytes(), s2.as_bytes())
+        self.ncd_str(s1, s2)
     }
 
     pub fn maximum(&self) -> f64 {
@@ -206,8 +243,8 @@ impl Bwtrlencd {
 
 /// Square Root NCD.
 ///
-/// The "compressed size" of a sequence is the sum of √count for each unique element,
-/// where count is that element's frequency.
+/// The "compressed size" of a sequence is the sum of √count for each unique
+/// **Unicode character** (code point), matching Python's character-level view.
 ///
 /// <https://en.wikipedia.org/wiki/Normalized_compression_distance>
 #[derive(Debug, Clone, Copy, Default)]
@@ -219,8 +256,38 @@ impl SqrtNcd {
     pub fn new(qval: usize) -> Self {
         Self { qval }
     }
+
+    /// Compressed size of a string: Σ √freq(char) over all unique chars.
+    fn get_size_str(s: &str) -> f64 {
+        let mut counts: HashMap<char, usize> = HashMap::new();
+        for c in s.chars() {
+            *counts.entry(c).or_insert(0) += 1;
+        }
+        counts.values().map(|&c| (c as f64).sqrt()).sum()
+    }
+
+    /// NCD over two strings (char-level, matching Python).
+    fn ncd_str(&self, s1: &str, s2: &str) -> f64 {
+        // Try both orderings, take the one giving the smaller concat size
+        let mut ab: String = String::with_capacity(s1.len() + s2.len());
+        ab.push_str(s1);
+        ab.push_str(s2);
+        let mut ba: String = String::with_capacity(s1.len() + s2.len());
+        ba.push_str(s2);
+        ba.push_str(s1);
+
+        let concat_size = Self::get_size_str(&ab).min(Self::get_size_str(&ba));
+        let c1 = Self::get_size_str(s1);
+        let c2 = Self::get_size_str(s2);
+        let max_size = c1.max(c2);
+        if max_size == 0.0 {
+            return 0.0;
+        }
+        (concat_size - c1.min(c2)) / max_size
+    }
 }
 
+// Keep NcdBase impl for byte-level use (e.g. from other places)
 impl NcdBase for SqrtNcd {
     fn get_size(&self, data: &[u8]) -> f64 {
         let mut counts: HashMap<u8, usize> = HashMap::new();
@@ -233,7 +300,7 @@ impl NcdBase for SqrtNcd {
 
 impl SqrtNcd {
     pub fn distance(&self, s1: &str, s2: &str) -> f64 {
-        self.ncd(s1.as_bytes(), s2.as_bytes())
+        self.ncd_str(s1, s2)
     }
 
     pub fn maximum(&self) -> f64 {
@@ -253,7 +320,8 @@ impl SqrtNcd {
 
 /// Entropy-based NCD.
 ///
-/// The "compressed size" is `coef + Shannon_entropy`, where entropy is computed as
+/// The "compressed size" is `coef + Shannon_entropy`, where entropy is computed
+/// over **Unicode characters** (code points), matching Python's character-level view.
 /// `-Σ p·log_base(p)` with `p = count / total`.
 ///
 /// Parameters: `qval=1`, `coef=1`, `base=2`.
@@ -297,6 +365,48 @@ impl EntropyNcd {
         }
         entropy.max(0.0)
     }
+
+    /// Char-level entropy of a string (matching Python's character iteration).
+    fn entropy_of_str(&self, s: &str) -> f64 {
+        if s.is_empty() {
+            return 0.0;
+        }
+        let mut counts: HashMap<char, usize> = HashMap::new();
+        for c in s.chars() {
+            *counts.entry(c).or_insert(0) += 1;
+        }
+        let total = s.chars().count() as f64;
+        let mut entropy = 0.0f64;
+        for &c in counts.values() {
+            let p = c as f64 / total;
+            entropy -= p * p.log(self.base);
+        }
+        entropy.max(0.0)
+    }
+
+    /// Compressed size of a string (char-level).
+    fn get_size_str(&self, s: &str) -> f64 {
+        self.coef + self.entropy_of_str(s)
+    }
+
+    /// NCD over two strings (char-level, matching Python).
+    fn ncd_str(&self, s1: &str, s2: &str) -> f64 {
+        let mut ab = String::with_capacity(s1.len() + s2.len());
+        ab.push_str(s1);
+        ab.push_str(s2);
+        let mut ba = String::with_capacity(s1.len() + s2.len());
+        ba.push_str(s2);
+        ba.push_str(s1);
+
+        let concat_size = self.get_size_str(&ab).min(self.get_size_str(&ba));
+        let c1 = self.get_size_str(s1);
+        let c2 = self.get_size_str(s2);
+        let max_size = c1.max(c2);
+        if max_size == 0.0 {
+            return 0.0;
+        }
+        (concat_size - c1.min(c2)) / max_size
+    }
 }
 
 impl NcdBase for EntropyNcd {
@@ -307,7 +417,7 @@ impl NcdBase for EntropyNcd {
 
 impl EntropyNcd {
     pub fn distance(&self, s1: &str, s2: &str) -> f64 {
-        self.ncd(s1.as_bytes(), s2.as_bytes())
+        self.ncd_str(s1, s2)
     }
 
     pub fn maximum(&self) -> f64 {
@@ -583,7 +693,7 @@ impl LzmaNcd {
 pub struct ZlibNcd;
 
 fn zlib_compress(data: &[u8]) -> Vec<u8> {
-    let mut encoder = ZlibEncoder::new(Vec::new(), ZlibCompression::default());
+    let mut encoder = ZlibEncoder::new(Vec::new(), ZlibCompression::new(6));
     encoder.write_all(data).unwrap_or(());
     encoder.finish().unwrap_or_default()
 }
