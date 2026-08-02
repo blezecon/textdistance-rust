@@ -473,11 +473,11 @@
 
   ### Phase 5: Final Verification
 
-  - [ ] **5.1** `cargo fmt`
-  - [ ] **5.2** `cargo clippy` — fix all warnings
-  - [ ] **5.3** `cargo test` — all tests pass
-  - [ ] **5.4** Document all public APIs with `///` doc comments
-  - [ ] **5.5** Verify `DamerauLevenshtein` and `JaroWinkler` are exported and usable from `token_based.rs`
+  - [x] **5.1** `cargo fmt`
+  - [x] **5.2** `cargo clippy` — fix all warnings
+  - [x] **5.3** `cargo test` — all tests pass
+  - [x] **5.4** Document all public APIs with `///` doc comments
+  - [x] **5.5** Verify `DamerauLevenshtein` and `JaroWinkler` are exported and usable from `token_based.rs`
 
   ---
 
@@ -607,8 +607,8 @@
 
   ### Final Verification (Phase 5)
 
-  - [ ] All unit tests pass
-  - [ ] `cargo fmt` passes
-  - [ ] `cargo clippy` passes
-  - [ ] Public APIs documented with `///` doc comments
-  - [ ] `DamerauLevenshtein` and `JaroWinkler` are `pub` and importable
+  - [x] All unit tests pass
+  - [x] `cargo fmt` passes
+  - [x] `cargo clippy` passes
+  - [x] Public APIs documented with `///` doc comments
+  - [x] `DamerauLevenshtein` and `JaroWinkler` are `pub` and importable

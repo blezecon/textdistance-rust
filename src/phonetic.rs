@@ -127,9 +127,13 @@ const EDITEX_UNGROUPED: &[u8] = b"HW";
 /// external library and always returns the internal implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Editex {
+    /// Whether to use local alignment (skip the first-column initialization).
     pub local: bool,
+    /// Cost of aligning two identical characters.
     pub match_cost: usize,
+    /// Cost of aligning two characters from the same letter class.
     pub group_cost: usize,
+    /// Cost of aligning two unrelated characters.
     pub mismatch_cost: usize,
 }
 
