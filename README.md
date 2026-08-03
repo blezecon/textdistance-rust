@@ -53,18 +53,11 @@ The project was built by two developers working in parallel using AI-assisted co
 
 ## Installation
 
-This crate is not yet published to [crates.io](https://crates.io). To use it from GitHub, add the following to your `Cargo.toml`:
+This crate is published to [crates.io](https://crates.io/crates/textdistance-rust). Add the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-textdistance-rust = { git = "https://github.com/blezecon/textdistance-rust" }
-```
-
-Once a release is published to crates.io, installation will be:
-
-```toml
-[dependencies]
-textdistance-rust = "0.1"
+textdistance-rust = "0.1.2"
 ```
 
 > **Note:** The crate requires **Rust stable** toolchain. It was developed with Rust edition 2024 (`edition = "2024"` in `Cargo.toml`).
@@ -445,8 +438,6 @@ cargo check
 cargo fmt && cargo clippy && cargo test
 ```
 
-> The project has **no benchmarks directory** and **no comparison scripts** at this time. Benchmark and comparison infrastructure has not been created.
-
 ---
 
 ## Contributing
@@ -483,13 +474,12 @@ cargo fmt && cargo clippy && cargo test
 
 The following items are **obviously incomplete** based on the repository state:
 
-- [ ] **Publish to crates.io** — the crate is not yet published (version `0.1.1`, no publish metadata beyond `Cargo.toml`)
-- [ ] **`MongeElkan` checklist** — the `PERSON2.md` checklist shows MongeElkan as complete (`[x]`), but `MongeElkan` does **not** implement the `Base<T>` trait; it exposes string-level methods directly (`similarity(&str, &str)`, `distance(&str, &str)`). Full trait integration is not done.
-- [ ] **Benchmarks** — no `benches/` directory exists; performance characteristics are not measured
-- [ ] **Comparison scripts** — no scripts exist to compare Rust output against Python output programmatically
-- [ ] **`examples/` directory** — no standalone examples exist; only inline doc tests
-- [ ] **`vector_based` algorithms** — explicitly out of scope (marked draft/incomplete in Python); not ported
-- [ ] **`qval=0` word-splitting** — Python's `qval=0` splits strings by whitespace into word tokens; this is not implemented for the generic `&[T]` API
+- [x] **Publish to crates.io** — published as [`textdistance-rust v0.1.2`](https://crates.io/crates/textdistance-rust)
+- [ ] **`MongeElkan` trait integration** — `MongeElkan` exposes string-level methods directly (`similarity(&str, &str)`), full `Base<T>` trait integration is pending
+- [ ] **Benchmarks** — standalone `benches/` directory with `criterion` benchmarks
+- [ ] **`examples/` directory** — standalone executable examples
+- [ ] **`vector_based` algorithms** — explicitly out of scope (marked draft/incomplete in Python)
+- [ ] **`qval=0` word-splitting** — whitespace word tokenization for generic `&[T]` API
 
 ---
 
