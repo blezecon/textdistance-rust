@@ -901,17 +901,28 @@ impl<T: Clone + PartialEq> Base<T> for MLIPNS {
 
 // ─── NeedlemanWunsch / Gotoh / SmithWaterman ────────────────────────────────
 
+/// Alignment scores only require the previous and current DP row.  Most
+/// comparisons are short, so keep rows up to this length on the stack and
+/// avoid per-call heap allocation.
+const STACK_ALIGNMENT_MAX_LEN: usize = 256;
+const STACK_ALIGNMENT_ROW_LEN: usize = STACK_ALIGNMENT_MAX_LEN + 1;
+
 /// Needleman-Wunsch global alignment DP.
 ///
 /// Mirrors the Python numpy implementation with `f64` values: the first row and
 /// column are initialized to `-i * gap_cost` and each cell is the max of the
 /// diagonal (substitution), up (deletion) and left (insertion) moves.
-fn needleman_wunsch_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) -> f64) -> f64 {
+fn needleman_wunsch_dp_rows<'a, U>(
+    s1: &[U],
+    s2: &[U],
+    gap_cost: f64,
+    sim: impl Fn(&U, &U) -> f64,
+    mut prev_row: &'a mut [f64],
+    mut curr_row: &'a mut [f64],
+) -> f64 {
     let len1 = s1.len();
     let len2 = s2.len();
 
-    let mut prev_row = vec![0.0f64; len2 + 1];
-    let mut curr_row = vec![0.0f64; len2 + 1];
     for (j, cell) in prev_row.iter_mut().enumerate() {
         *cell = -(j as f64) * gap_cost;
     }
@@ -929,6 +940,26 @@ fn needleman_wunsch_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U
     }
 
     prev_row[len2]
+}
+
+fn needleman_wunsch_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) -> f64) -> f64 {
+    let len2 = s2.len();
+    if len2 <= STACK_ALIGNMENT_MAX_LEN {
+        let mut prev_row = [0.0f64; STACK_ALIGNMENT_ROW_LEN];
+        let mut curr_row = [0.0f64; STACK_ALIGNMENT_ROW_LEN];
+        needleman_wunsch_dp_rows(
+            s1,
+            s2,
+            gap_cost,
+            sim,
+            &mut prev_row[..=len2],
+            &mut curr_row[..=len2],
+        )
+    } else {
+        let mut prev_row = vec![0.0f64; len2 + 1];
+        let mut curr_row = vec![0.0f64; len2 + 1];
+        needleman_wunsch_dp_rows(s1, s2, gap_cost, sim, &mut prev_row, &mut curr_row)
+    }
 }
 
 /// Normalized distance for global-alignment metrics, mirroring the Python
@@ -1052,6 +1083,57 @@ impl<T: Clone + PartialEq> Base<T> for NeedlemanWunsch<T> {
 /// Deviation: the Python reference raises `IndexError` when either sequence is
 /// empty; here the pure-gap score `-gap_open - gap_ext * (len - 1)` is
 /// returned instead.
+struct GotohRows<'a> {
+    prev_d: &'a mut [f64],
+    prev_p: &'a mut [f64],
+    prev_q: &'a mut [f64],
+    curr_d: &'a mut [f64],
+    curr_p: &'a mut [f64],
+    curr_q: &'a mut [f64],
+}
+
+fn gotoh_dp_rows<U>(
+    s1: &[U],
+    s2: &[U],
+    gap_open: f64,
+    gap_ext: f64,
+    sim: impl Fn(&U, &U) -> f64,
+    mut rows: GotohRows<'_>,
+) -> f64 {
+    let len1 = s1.len();
+    let len2 = s2.len();
+    let neg_inf = f64::NEG_INFINITY;
+
+    rows.prev_d[0] = 0.0;
+    for (j, cell) in rows.prev_q.iter_mut().enumerate().take(len2 + 1).skip(1) {
+        *cell = -gap_open - gap_ext * (j as f64 - 1.0);
+    }
+
+    for i in 1..=len1 {
+        rows.curr_d.fill(neg_inf);
+        rows.curr_p.fill(neg_inf);
+        rows.curr_q.fill(neg_inf);
+        rows.curr_p[0] = -gap_open - gap_ext * (i as f64 - 1.0);
+
+        for j in 1..=len2 {
+            let sim_val = sim(&s1[i - 1], &s2[j - 1]);
+            rows.curr_d[j] = (rows.prev_d[j - 1] + sim_val)
+                .max(rows.prev_p[j - 1] + sim_val)
+                .max(rows.prev_q[j - 1] + sim_val);
+            rows.curr_p[j] = (rows.prev_d[j] - gap_open).max(rows.prev_p[j] - gap_ext);
+            rows.curr_q[j] = (rows.curr_d[j - 1] - gap_open).max(rows.curr_q[j - 1] - gap_ext);
+        }
+
+        std::mem::swap(&mut rows.prev_d, &mut rows.curr_d);
+        std::mem::swap(&mut rows.prev_p, &mut rows.curr_p);
+        std::mem::swap(&mut rows.prev_q, &mut rows.curr_q);
+    }
+
+    rows.prev_d[len2]
+        .max(rows.prev_p[len2])
+        .max(rows.prev_q[len2])
+}
+
 fn gotoh_dp<U>(
     s1: &[U],
     s2: &[U],
@@ -1069,40 +1151,51 @@ fn gotoh_dp<U>(
         return -gap_open - gap_ext * (gaps as f64 - 1.0);
     }
 
-    let neg_inf = f64::NEG_INFINITY;
-    let mut prev_d = vec![neg_inf; len2 + 1];
-    let mut prev_p = vec![neg_inf; len2 + 1];
-    let mut prev_q = vec![neg_inf; len2 + 1];
-    let mut curr_d = vec![neg_inf; len2 + 1];
-    let mut curr_p = vec![neg_inf; len2 + 1];
-    let mut curr_q = vec![neg_inf; len2 + 1];
-
-    prev_d[0] = 0.0;
-    for (j, cell) in prev_q.iter_mut().enumerate().take(len2 + 1).skip(1) {
-        *cell = -gap_open - gap_ext * (j as f64 - 1.0);
+    if len2 <= STACK_ALIGNMENT_MAX_LEN {
+        let mut prev_d = [f64::NEG_INFINITY; STACK_ALIGNMENT_ROW_LEN];
+        let mut prev_p = [f64::NEG_INFINITY; STACK_ALIGNMENT_ROW_LEN];
+        let mut prev_q = [f64::NEG_INFINITY; STACK_ALIGNMENT_ROW_LEN];
+        let mut curr_d = [f64::NEG_INFINITY; STACK_ALIGNMENT_ROW_LEN];
+        let mut curr_p = [f64::NEG_INFINITY; STACK_ALIGNMENT_ROW_LEN];
+        let mut curr_q = [f64::NEG_INFINITY; STACK_ALIGNMENT_ROW_LEN];
+        gotoh_dp_rows(
+            s1,
+            s2,
+            gap_open,
+            gap_ext,
+            sim,
+            GotohRows {
+                prev_d: &mut prev_d[..=len2],
+                prev_p: &mut prev_p[..=len2],
+                prev_q: &mut prev_q[..=len2],
+                curr_d: &mut curr_d[..=len2],
+                curr_p: &mut curr_p[..=len2],
+                curr_q: &mut curr_q[..=len2],
+            },
+        )
+    } else {
+        let mut prev_d = vec![f64::NEG_INFINITY; len2 + 1];
+        let mut prev_p = vec![f64::NEG_INFINITY; len2 + 1];
+        let mut prev_q = vec![f64::NEG_INFINITY; len2 + 1];
+        let mut curr_d = vec![f64::NEG_INFINITY; len2 + 1];
+        let mut curr_p = vec![f64::NEG_INFINITY; len2 + 1];
+        let mut curr_q = vec![f64::NEG_INFINITY; len2 + 1];
+        gotoh_dp_rows(
+            s1,
+            s2,
+            gap_open,
+            gap_ext,
+            sim,
+            GotohRows {
+                prev_d: &mut prev_d,
+                prev_p: &mut prev_p,
+                prev_q: &mut prev_q,
+                curr_d: &mut curr_d,
+                curr_p: &mut curr_p,
+                curr_q: &mut curr_q,
+            },
+        )
     }
-
-    for i in 1..=len1 {
-        curr_d.fill(neg_inf);
-        curr_p.fill(neg_inf);
-        curr_q.fill(neg_inf);
-        curr_p[0] = -gap_open - gap_ext * (i as f64 - 1.0);
-
-        for j in 1..=len2 {
-            let sim_val = sim(&s1[i - 1], &s2[j - 1]);
-            curr_d[j] = (prev_d[j - 1] + sim_val)
-                .max(prev_p[j - 1] + sim_val)
-                .max(prev_q[j - 1] + sim_val);
-            curr_p[j] = (prev_d[j] - gap_open).max(prev_p[j] - gap_ext);
-            curr_q[j] = (curr_d[j - 1] - gap_open).max(curr_q[j - 1] - gap_ext);
-        }
-
-        std::mem::swap(&mut prev_d, &mut curr_d);
-        std::mem::swap(&mut prev_p, &mut curr_p);
-        std::mem::swap(&mut prev_q, &mut curr_q);
-    }
-
-    prev_d[len2].max(prev_p[len2]).max(prev_q[len2])
 }
 
 /// Gotoh similarity: Needleman-Wunsch with affine gap penalties.
@@ -1202,12 +1295,16 @@ impl<T: Clone + PartialEq> Base<T> for Gotoh<T> {
 ///
 /// Like [`needleman_wunsch_dp`] but cells are floored at 0 so only the best
 /// local region contributes; the bottom-right cell is returned.
-fn smith_waterman_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) -> f64) -> f64 {
+fn smith_waterman_dp_rows<'a, U>(
+    s1: &[U],
+    s2: &[U],
+    gap_cost: f64,
+    sim: impl Fn(&U, &U) -> f64,
+    mut prev_row: &'a mut [f64],
+    mut curr_row: &'a mut [f64],
+) -> f64 {
     let len1 = s1.len();
     let len2 = s2.len();
-
-    let mut prev_row = vec![0.0f64; len2 + 1];
-    let mut curr_row = vec![0.0f64; len2 + 1];
 
     for i in 1..=len1 {
         curr_row[0] = 0.0;
@@ -1222,6 +1319,26 @@ fn smith_waterman_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) 
     }
 
     prev_row[len2]
+}
+
+fn smith_waterman_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) -> f64) -> f64 {
+    let len2 = s2.len();
+    if len2 <= STACK_ALIGNMENT_MAX_LEN {
+        let mut prev_row = [0.0f64; STACK_ALIGNMENT_ROW_LEN];
+        let mut curr_row = [0.0f64; STACK_ALIGNMENT_ROW_LEN];
+        smith_waterman_dp_rows(
+            s1,
+            s2,
+            gap_cost,
+            sim,
+            &mut prev_row[..=len2],
+            &mut curr_row[..=len2],
+        )
+    } else {
+        let mut prev_row = vec![0.0f64; len2 + 1];
+        let mut curr_row = vec![0.0f64; len2 + 1];
+        smith_waterman_dp_rows(s1, s2, gap_cost, sim, &mut prev_row, &mut curr_row)
+    }
 }
 
 /// Smith-Waterman similarity: local alignment score.
@@ -1844,5 +1961,42 @@ mod tests {
     fn test_smith_waterman_qval() {
         let sw = SmithWaterman::new(2, 1.0, None);
         assert_close(sw.similarity(&chars("hello"), &chars("helxo")), 2.0);
+    }
+
+    #[test]
+    fn test_alignment_row_storage_boundaries() {
+        for len in [STACK_ALIGNMENT_MAX_LEN, STACK_ALIGNMENT_MAX_LEN + 1] {
+            let sequence = vec!['a'; len];
+            let expected = len as f64;
+
+            assert_close(
+                needleman_wunsch_dp(
+                    &sequence,
+                    &sequence,
+                    1.0,
+                    |a, b| {
+                        if a == b { 1.0 } else { -1.0 }
+                    },
+                ),
+                expected,
+            );
+            assert_close(
+                gotoh_dp(&sequence, &sequence, 1.0, 0.4, |a, b| {
+                    if a == b { 1.0 } else { -1.0 }
+                }),
+                expected,
+            );
+            assert_close(
+                smith_waterman_dp(
+                    &sequence,
+                    &sequence,
+                    1.0,
+                    |a, b| {
+                        if a == b { 1.0 } else { -1.0 }
+                    },
+                ),
+                expected,
+            );
+        }
     }
 }

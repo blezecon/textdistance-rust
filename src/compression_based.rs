@@ -7,13 +7,14 @@
 //!
 //! where C(·) is the compressed size function supplied by each algorithm.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::Write;
 
 use bzip2::Compression as BzCompression;
 use bzip2::write::BzEncoder;
+use flate2::{Compress, FlushCompress, Status};
 use flate2::Compression as ZlibCompression;
-use flate2::write::ZlibEncoder;
 use xz2::write::XzEncoder;
 
 // ─── NCD trait ───────────────────────────────────────────────────────────────
@@ -489,27 +490,40 @@ impl ArithNcd {
 
     /// Build cumulative probability table: symbol → (cum_start_num/denom, width_num/denom).
     fn make_probs(&self, data: &[u8]) -> Vec<(u8, u128, u128, u128)> {
-        // count frequencies
-        let mut counts: HashMap<u8, u64> = HashMap::new();
+        // A byte alphabet has a fixed, small domain.  Counting into a flat
+        // table avoids hashing and allocation on every compression pass.
+        let mut counts = [0u32; 256];
         for &b in data {
-            *counts.entry(b).or_insert(0) += 1;
+            counts[b as usize] += 1;
         }
-        if let Some(t) = self.terminator {
-            counts.entry(t).or_insert(1);
+        if let Some(t) = self.terminator
+            && counts[t as usize] == 0
+        {
+            counts[t as usize] = 1;
         }
 
         // sort by descending count (like Python Counter.most_common())
-        let mut items: Vec<(u8, u64)> = counts.into_iter().collect();
-        items.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut symbols = [0u8; 256];
+        let mut symbol_count = 0;
+        for (symbol, &count) in counts.iter().enumerate() {
+            if count != 0 {
+                symbols[symbol_count] = symbol as u8;
+                symbol_count += 1;
+            }
+        }
+        let symbols = &mut symbols[..symbol_count];
+        symbols
+            .sort_unstable_by(|a, b| counts[*b as usize].cmp(&counts[*a as usize]).then(a.cmp(b)));
 
-        let total: u64 = items.iter().map(|(_, c)| c).sum();
+        let total: u32 = counts.iter().sum();
         let denom = total as u128;
 
-        let mut probs = Vec::with_capacity(items.len());
+        let mut probs = Vec::with_capacity(symbols.len());
         let mut cumulative: u128 = 0;
-        for (sym, count) in items {
-            probs.push((sym, cumulative, count as u128, denom));
-            cumulative += count as u128;
+        for &symbol in symbols.iter() {
+            let count = counts[symbol as usize] as u128;
+            probs.push((symbol, cumulative, count, denom));
+            cumulative += count;
         }
         probs
     }
@@ -641,7 +655,7 @@ impl ArithNcd {
 pub struct Bz2Ncd;
 
 fn bz2_compress(data: &[u8]) -> Vec<u8> {
-    let mut encoder = BzEncoder::new(Vec::new(), BzCompression::fast());
+    let mut encoder = BzEncoder::new(Vec::with_capacity(1024), BzCompression::fast());
     encoder.write_all(data).unwrap_or(());
     encoder.finish().unwrap_or_default()
 }
@@ -726,17 +740,71 @@ impl LzmaNcd {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ZlibNcd;
 
-fn zlib_compress(data: &[u8]) -> Vec<u8> {
-    let mut encoder =
-        ZlibEncoder::new(Vec::with_capacity(data.len() + 32), ZlibCompression::fast());
-    encoder.write_all(data).unwrap_or(());
-    encoder.finish().unwrap_or_default()
+const ZLIB_HEADER_BYTES: usize = 2;
+const ZLIB_INITIAL_OUTPUT_CAPACITY: usize = 1024;
+
+thread_local! {
+    static ZLIB_SCRATCH: RefCell<ZlibScratch> = RefCell::new(ZlibScratch::new());
+}
+
+struct ZlibScratch {
+    compressor: Compress,
+    output: Vec<u8>,
+}
+
+impl ZlibScratch {
+    fn new() -> Self {
+        Self {
+            compressor: Compress::new(ZlibCompression::fast(), true),
+            output: Vec::with_capacity(ZLIB_INITIAL_OUTPUT_CAPACITY),
+        }
+    }
+
+    fn compressed_len(&mut self, data: &[u8]) -> usize {
+        let mut required_capacity = zlib_compress_bound(data.len());
+
+        loop {
+            self.output.clear();
+            if self.output.capacity() < required_capacity {
+                self.output
+                    .reserve_exact(required_capacity - self.output.capacity());
+            }
+
+            self.compressor.reset();
+            match self
+                .compressor
+                .compress_vec(data, &mut self.output, FlushCompress::Finish)
+            {
+                Ok(Status::StreamEnd) => return self.output.len(),
+                Ok(Status::Ok | Status::BufError) => {
+                    required_capacity = self
+                        .output
+                        .capacity()
+                        .saturating_mul(2)
+                        .max(required_capacity.saturating_add(1));
+                }
+                Err(_) => return 0,
+            }
+        }
+    }
+}
+
+fn zlib_compress_bound(input_len: usize) -> usize {
+    input_len
+        .saturating_add(input_len >> 12)
+        .saturating_add(input_len >> 14)
+        .saturating_add(input_len >> 25)
+        .saturating_add(13)
+        .max(ZLIB_INITIAL_OUTPUT_CAPACITY)
+}
+
+fn zlib_compressed_len(data: &[u8]) -> usize {
+    ZLIB_SCRATCH.with_borrow_mut(|scratch| scratch.compressed_len(data))
 }
 
 impl NcdBase for ZlibNcd {
     fn get_size(&self, data: &[u8]) -> f64 {
-        let compressed = zlib_compress(data);
-        compressed.len().saturating_sub(2) as f64
+        zlib_compressed_len(data).saturating_sub(ZLIB_HEADER_BYTES) as f64
     }
 }
 
@@ -949,5 +1017,25 @@ mod tests {
         let nd = ZlibNcd.normalized_distance("test", "text");
         let ns = ZlibNcd.normalized_similarity("test", "text");
         assert!((nd + ns - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_zlib_direct_len_matches_writer_encoder() {
+        use flate2::write::ZlibEncoder;
+
+        for input in [
+            b"".as_slice(),
+            b"test".as_slice(),
+            b"testtext".as_slice(),
+            b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".as_slice(),
+            b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".as_slice(),
+        ] {
+            let mut encoder =
+                ZlibEncoder::new(Vec::with_capacity(input.len() + 32), ZlibCompression::fast());
+            encoder.write_all(input).unwrap();
+            let expected = encoder.finish().unwrap();
+
+            assert_eq!(zlib_compressed_len(input), expected.len());
+        }
     }
 }
