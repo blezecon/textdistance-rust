@@ -4,7 +4,6 @@
 //! [`Hamming`], [`Levenshtein`] and [`DamerauLevenshtein`].
 
 use std::collections::HashMap;
-use std::hash::Hash;
 
 use crate::base::{Base, is_ident};
 use crate::types::{SimFunc, TestFunc};
@@ -74,29 +73,36 @@ fn damerau_restricted<U>(s1: &[U], s2: &[U], test: impl Fn(&U, &U) -> bool) -> u
     d[len1][len2]
 }
 
-/// Unrestricted Damerau-Levenshtein DP (Wikipedia algorithm with `da` map).
-fn damerau_unrestricted<U: Hash + Eq + Clone>(
-    s1: &[U],
-    s2: &[U],
-    test: impl Fn(&U, &U) -> bool,
-) -> usize {
+/// Unrestricted Damerau-Levenshtein DP.
+///
+/// The transposition recurrence can reference arbitrary earlier rows, so the
+/// DP matrix is retained. It is stored flat to avoid one heap allocation per
+/// row. Instead of a last-seen `HashMap`, `last_s1_by_s2_col[j]` stores the
+/// previous row where `s1` matched the fixed character at `s2[j - 1]`.
+fn damerau_unrestricted<U: Eq>(s1: &[U], s2: &[U], test: impl Fn(&U, &U) -> bool) -> usize {
     let len1 = s1.len();
     let len2 = s2.len();
     let maxdist = len1 + len2;
-    let mut d = vec![vec![0usize; len2 + 1]; len1 + 1];
-    for (i, row) in d.iter_mut().enumerate() {
-        row[0] = i;
+    let cols = len2 + 1;
+    let mut d = vec![0usize; (len1 + 1) * cols];
+    let mut last_s1_by_s2_col = vec![0usize; cols];
+    let mut matched_cols = Vec::with_capacity(len2);
+
+    for i in 0..=len1 {
+        d[i * cols] = i;
     }
-    for (j, cell) in d[0].iter_mut().enumerate() {
+    for (j, cell) in d.iter_mut().take(cols).enumerate() {
         *cell = j;
     }
-    let mut da: HashMap<U, usize> = HashMap::new();
+
     for i in 1..=len1 {
         let mut db = 0;
         let cs1 = &s1[i - 1];
+        matched_cols.clear();
+
         for j in 1..=len2 {
             let cs2 = &s2[j - 1];
-            let i1 = da.get(cs2).copied().unwrap_or(0);
+            let i1 = last_s1_by_s2_col[j];
             let j1 = db;
             let cost;
             if test(cs1, cs2) {
@@ -105,22 +111,91 @@ fn damerau_unrestricted<U: Hash + Eq + Clone>(
             } else {
                 cost = 1;
             }
+            if cs1 == cs2 {
+                matched_cols.push(j);
+            }
             let transposition = {
                 let base = if i1 == 0 || j1 == 0 {
                     maxdist
                 } else {
-                    d[i1 - 1][j1 - 1]
+                    d[(i1 - 1) * cols + (j1 - 1)]
                 };
                 base + (i - i1) - 1 + (j - j1)
             };
-            d[i][j] = (d[i - 1][j - 1] + cost)
-                .min(d[i][j - 1] + 1)
-                .min(d[i - 1][j] + 1)
+
+            let idx = i * cols + j;
+            d[idx] = (d[(i - 1) * cols + (j - 1)] + cost)
+                .min(d[i * cols + (j - 1)] + 1)
+                .min(d[(i - 1) * cols + j] + 1)
                 .min(transposition);
         }
-        da.insert(cs1.clone(), i);
+
+        for &j in &matched_cols {
+            last_s1_by_s2_col[j] = i;
+        }
     }
-    d[len1][len2]
+    d[len1 * cols + len2]
+}
+
+fn damerau_unrestricted_ascii_chars(
+    s1: &[char],
+    s2: &[char],
+    test: impl Fn(&char, &char) -> bool,
+) -> Option<usize> {
+    if !s1.iter().chain(s2.iter()).all(|&c| (c as u32) < 256) {
+        return None;
+    }
+
+    let len1 = s1.len();
+    let len2 = s2.len();
+    let maxdist = len1 + len2;
+    let cols = len2 + 1;
+    let mut d = vec![0usize; (len1 + 1) * cols];
+    let mut last_seen = [0usize; 256];
+
+    for i in 0..=len1 {
+        d[i * cols] = i;
+    }
+    for (j, cell) in d.iter_mut().take(cols).enumerate() {
+        *cell = j;
+    }
+
+    for i in 1..=len1 {
+        let mut db = 0;
+        let cs1 = s1[i - 1];
+
+        for j in 1..=len2 {
+            let cs2 = s2[j - 1];
+            let i1 = last_seen[cs2 as usize];
+            let j1 = db;
+            let cost;
+            if test(&cs1, &cs2) {
+                cost = 0;
+                db = j;
+            } else {
+                cost = 1;
+            }
+
+            let transposition = {
+                let base = if i1 == 0 || j1 == 0 {
+                    maxdist
+                } else {
+                    d[(i1 - 1) * cols + (j1 - 1)]
+                };
+                base + (i - i1) - 1 + (j - j1)
+            };
+
+            let idx = i * cols + j;
+            d[idx] = (d[(i - 1) * cols + (j - 1)] + cost)
+                .min(d[i * cols + (j - 1)] + 1)
+                .min(d[(i - 1) * cols + j] + 1)
+                .min(transposition);
+        }
+
+        last_seen[cs1 as usize] = i;
+    }
+
+    Some(d[len1 * cols + len2])
 }
 
 // ─── Hamming ─────────────────────────────────────────────────────────────────
@@ -274,7 +349,34 @@ impl<T> DamerauLevenshtein<T> {
     }
 }
 
-impl<T: Clone + Hash + Eq> Base<T> for DamerauLevenshtein<T> {
+impl DamerauLevenshtein<char> {
+    /// Compute distance for character sequences.
+    ///
+    /// For unrestricted byte-sized character inputs this uses a fixed
+    /// last-seen table (`[usize; 256]`) instead of a heap-allocated map.
+    pub fn distance(&self, s1: &[char], s2: &[char]) -> f64 {
+        if self.qval <= 1 {
+            let test = self.test_func.unwrap_or(|a, b| a == b);
+            if self.restricted {
+                damerau_restricted(s1, s2, test) as f64
+            } else {
+                damerau_unrestricted_ascii_chars(s1, s2, test)
+                    .unwrap_or_else(|| damerau_unrestricted(s1, s2, test)) as f64
+            }
+        } else {
+            let g1 = find_ngrams(s1, self.qval);
+            let g2 = find_ngrams(s2, self.qval);
+            let test = |a: &Vec<char>, b: &Vec<char>| a == b;
+            if self.restricted {
+                damerau_restricted(&g1, &g2, test) as f64
+            } else {
+                damerau_unrestricted(&g1, &g2, test) as f64
+            }
+        }
+    }
+}
+
+impl<T: Clone + Eq> Base<T> for DamerauLevenshtein<T> {
     fn distance(&self, s1: &[T], s2: &[T]) -> f64 {
         if self.qval <= 1 {
             let test = self.test_func.unwrap_or(|a, b| a == b);
@@ -807,22 +909,26 @@ impl<T: Clone + PartialEq> Base<T> for MLIPNS {
 fn needleman_wunsch_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) -> f64) -> f64 {
     let len1 = s1.len();
     let len2 = s2.len();
-    let mut dist = vec![vec![0.0f64; len2 + 1]; len1 + 1];
-    for (i, row) in dist.iter_mut().enumerate() {
-        row[0] = -(i as f64) * gap_cost;
-    }
-    for (j, cell) in dist[0].iter_mut().enumerate() {
+
+    let mut prev_row = vec![0.0f64; len2 + 1];
+    let mut curr_row = vec![0.0f64; len2 + 1];
+    for (j, cell) in prev_row.iter_mut().enumerate() {
         *cell = -(j as f64) * gap_cost;
     }
+
     for i in 1..=len1 {
+        curr_row[0] = -(i as f64) * gap_cost;
         for j in 1..=len2 {
-            let subst = dist[i - 1][j - 1] + sim(&s1[i - 1], &s2[j - 1]);
-            let delete = dist[i - 1][j] - gap_cost;
-            let insert = dist[i][j - 1] - gap_cost;
-            dist[i][j] = subst.max(delete).max(insert);
+            let subst = prev_row[j - 1] + sim(&s1[i - 1], &s2[j - 1]);
+            let delete = prev_row[j] - gap_cost;
+            let insert = curr_row[j - 1] - gap_cost;
+            curr_row[j] = subst.max(delete).max(insert);
         }
+
+        std::mem::swap(&mut prev_row, &mut curr_row);
     }
-    dist[len1][len2]
+
+    prev_row[len2]
 }
 
 /// Normalized distance for global-alignment metrics, mirroring the Python
@@ -964,31 +1070,39 @@ fn gotoh_dp<U>(
     }
 
     let neg_inf = f64::NEG_INFINITY;
-    let mut d = vec![vec![neg_inf; len2 + 1]; len1 + 1];
-    let mut p = vec![vec![neg_inf; len2 + 1]; len1 + 1];
-    let mut q = vec![vec![neg_inf; len2 + 1]; len1 + 1];
+    let mut prev_d = vec![neg_inf; len2 + 1];
+    let mut prev_p = vec![neg_inf; len2 + 1];
+    let mut prev_q = vec![neg_inf; len2 + 1];
+    let mut curr_d = vec![neg_inf; len2 + 1];
+    let mut curr_p = vec![neg_inf; len2 + 1];
+    let mut curr_q = vec![neg_inf; len2 + 1];
 
-    d[0][0] = 0.0;
-    for i in 1..=len1 {
-        p[i][0] = -gap_open - gap_ext * (i as f64 - 1.0);
-        q[i][1] = -gap_open;
-    }
-    for j in 1..=len2 {
-        p[1][j] = -gap_open;
-        q[0][j] = -gap_open - gap_ext * (j as f64 - 1.0);
+    prev_d[0] = 0.0;
+    for (j, cell) in prev_q.iter_mut().enumerate().take(len2 + 1).skip(1) {
+        *cell = -gap_open - gap_ext * (j as f64 - 1.0);
     }
 
     for i in 1..=len1 {
+        curr_d.fill(neg_inf);
+        curr_p.fill(neg_inf);
+        curr_q.fill(neg_inf);
+        curr_p[0] = -gap_open - gap_ext * (i as f64 - 1.0);
+
         for j in 1..=len2 {
             let sim_val = sim(&s1[i - 1], &s2[j - 1]);
-            d[i][j] = (d[i - 1][j - 1] + sim_val)
-                .max(p[i - 1][j - 1] + sim_val)
-                .max(q[i - 1][j - 1] + sim_val);
-            p[i][j] = (d[i - 1][j] - gap_open).max(p[i - 1][j] - gap_ext);
-            q[i][j] = (d[i][j - 1] - gap_open).max(q[i][j - 1] - gap_ext);
+            curr_d[j] = (prev_d[j - 1] + sim_val)
+                .max(prev_p[j - 1] + sim_val)
+                .max(prev_q[j - 1] + sim_val);
+            curr_p[j] = (prev_d[j] - gap_open).max(prev_p[j] - gap_ext);
+            curr_q[j] = (curr_d[j - 1] - gap_open).max(curr_q[j - 1] - gap_ext);
         }
+
+        std::mem::swap(&mut prev_d, &mut curr_d);
+        std::mem::swap(&mut prev_p, &mut curr_p);
+        std::mem::swap(&mut prev_q, &mut curr_q);
     }
-    d[len1][len2].max(p[len1][len2]).max(q[len1][len2])
+
+    prev_d[len2].max(prev_p[len2]).max(prev_q[len2])
 }
 
 /// Gotoh similarity: Needleman-Wunsch with affine gap penalties.
@@ -1091,16 +1205,23 @@ impl<T: Clone + PartialEq> Base<T> for Gotoh<T> {
 fn smith_waterman_dp<U>(s1: &[U], s2: &[U], gap_cost: f64, sim: impl Fn(&U, &U) -> f64) -> f64 {
     let len1 = s1.len();
     let len2 = s2.len();
-    let mut dist = vec![vec![0.0f64; len2 + 1]; len1 + 1];
+
+    let mut prev_row = vec![0.0f64; len2 + 1];
+    let mut curr_row = vec![0.0f64; len2 + 1];
+
     for i in 1..=len1 {
+        curr_row[0] = 0.0;
         for j in 1..=len2 {
-            let subst = dist[i - 1][j - 1] + sim(&s1[i - 1], &s2[j - 1]);
-            let delete = dist[i - 1][j] - gap_cost;
-            let insert = dist[i][j - 1] - gap_cost;
-            dist[i][j] = 0.0f64.max(subst).max(delete).max(insert);
+            let subst = prev_row[j - 1] + sim(&s1[i - 1], &s2[j - 1]);
+            let delete = prev_row[j] - gap_cost;
+            let insert = curr_row[j - 1] - gap_cost;
+            curr_row[j] = 0.0f64.max(subst).max(delete).max(insert);
         }
+
+        std::mem::swap(&mut prev_row, &mut curr_row);
     }
-    dist[len1][len2]
+
+    prev_row[len2]
 }
 
 /// Smith-Waterman similarity: local alignment score.

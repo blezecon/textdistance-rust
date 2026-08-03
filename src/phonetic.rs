@@ -113,6 +113,86 @@ const EDITEX_GROUPS: [&[u8]; 10] = [
 /// Letters not present in any group, as in Python's `Editex.ungrouped`.
 const EDITEX_UNGROUPED: &[u8] = b"HW";
 
+const EDITEX_NO_GROUP: u8 = 0x0F;
+const EDITEX_NO_GROUPS: u8 = (EDITEX_NO_GROUP << 4) | EDITEX_NO_GROUP;
+
+const fn editex_group_ids() -> [u8; 256] {
+    let mut ids = [EDITEX_NO_GROUPS; 256];
+    let mut group_idx = 0;
+
+    while group_idx < EDITEX_GROUPS.len() {
+        let group = EDITEX_GROUPS[group_idx];
+        let mut char_idx = 0;
+
+        while char_idx < group.len() {
+            let idx = group[char_idx] as usize;
+            let packed = ids[idx];
+
+            if packed & EDITEX_NO_GROUP == EDITEX_NO_GROUP {
+                ids[idx] = (packed & 0xF0) | group_idx as u8;
+            } else if packed >> 4 == EDITEX_NO_GROUP {
+                ids[idx] = (group_idx as u8) << 4 | (packed & 0x0F);
+            }
+
+            char_idx += 1;
+        }
+
+        group_idx += 1;
+    }
+
+    ids
+}
+
+const EDITEX_GROUP_IDS: [u8; 256] = editex_group_ids();
+
+const fn editex_ungrouped_flags() -> [bool; 256] {
+    let mut flags = [false; 256];
+    let mut idx = 0;
+
+    while idx < EDITEX_UNGROUPED.len() {
+        flags[EDITEX_UNGROUPED[idx] as usize] = true;
+        idx += 1;
+    }
+
+    flags
+}
+
+const EDITEX_UNGROUPED_FLAGS: [bool; 256] = editex_ungrouped_flags();
+
+fn editex_ascii_index(c: char) -> Option<usize> {
+    let code = c as u32;
+    (code < 256).then_some(code as usize)
+}
+
+fn editex_groups(c: char) -> u8 {
+    editex_ascii_index(c)
+        .map(|idx| EDITEX_GROUP_IDS[idx])
+        .unwrap_or(EDITEX_NO_GROUPS)
+}
+
+fn editex_groups_overlap(a: char, b: char) -> bool {
+    let a_groups = editex_groups(a);
+    let b_groups = editex_groups(b);
+
+    if a_groups == EDITEX_NO_GROUPS || b_groups == EDITEX_NO_GROUPS {
+        return false;
+    }
+
+    let a0 = a_groups & 0x0F;
+    let a1 = a_groups >> 4;
+    let b0 = b_groups & 0x0F;
+    let b1 = b_groups >> 4;
+
+    (a0 != EDITEX_NO_GROUP && (a0 == b0 || a0 == b1))
+        || (a1 != EDITEX_NO_GROUP && (a1 == b0 || a1 == b1))
+}
+
+fn editex_is_ungrouped(c: char) -> bool {
+    editex_ascii_index(c)
+        .map(|idx| EDITEX_UNGROUPED_FLAGS[idx])
+        .unwrap_or(false)
+}
+
 /// Editex phonetic edit distance (distance-first).
 ///
 /// Mirrors Python's `textdistance.Editex`: a letter-class edit distance where
@@ -171,18 +251,11 @@ impl Editex {
         if a == b {
             return self.match_cost;
         }
-        let a = a as u8;
-        let b = b as u8;
-        let grouped = |c: u8| EDITEX_GROUPS.iter().any(|g| g.contains(&c));
-        if !grouped(a) || !grouped(b) {
-            return self.mismatch_cost;
-        }
-        if EDITEX_GROUPS
-            .iter()
-            .any(|g| g.contains(&a) && g.contains(&b))
-        {
+
+        if editex_groups_overlap(a, b) {
             return self.group_cost;
         }
+
         self.mismatch_cost
     }
 
@@ -190,7 +263,7 @@ impl Editex {
     /// `Editex.d_cost`: aligning the current character with an ungrouped
     /// neighbor costs the `group_cost`.
     fn d_cost(&self, prev: char, curr: char) -> usize {
-        if prev != curr && EDITEX_UNGROUPED.contains(&(prev as u8)) {
+        if prev != curr && editex_is_ungrouped(prev) {
             return self.group_cost;
         }
         self.r_cost(prev, curr)
@@ -220,30 +293,37 @@ impl Base<char> for Editex {
         let len_s1 = s1.len() - 1;
         let len_s2 = s2.len() - 1;
 
-        let mut d_mat = vec![vec![0usize; len_s2 + 1]; len_s1 + 1];
+        let mut prev = vec![0usize; len_s2 + 1];
+        let mut curr = vec![0usize; len_s2 + 1];
 
-        if !self.local {
-            for i in 1..=len_s1 {
-                d_mat[i][0] = d_mat[i - 1][0] + self.d_cost(s1[i - 1], s1[i]);
-            }
-        }
         for j in 1..=len_s2 {
-            d_mat[0][j] = d_mat[0][j - 1] + self.d_cost(s2[j - 1], s2[j]);
+            prev[j] = prev[j - 1] + self.d_cost(s2[j - 1], s2[j]);
         }
+        let s2_delete_costs: Vec<usize> = (1..=len_s2)
+            .map(|j| self.d_cost(s2[j - 1], s2[j]))
+            .collect();
 
         for i in 1..=len_s1 {
             let cs1_prev = s1[i - 1];
             let cs1_curr = s1[i];
+            let s1_delete_cost = self.d_cost(cs1_prev, cs1_curr);
+            curr[0] = if self.local {
+                0
+            } else {
+                prev[0] + s1_delete_cost
+            };
+
             for j in 1..=len_s2 {
-                let cs2_prev = s2[j - 1];
                 let cs2_curr = s2[j];
-                d_mat[i][j] = (d_mat[i - 1][j] + self.d_cost(cs1_prev, cs1_curr))
-                    .min(d_mat[i][j - 1] + self.d_cost(cs2_prev, cs2_curr))
-                    .min(d_mat[i - 1][j - 1] + self.r_cost(cs1_curr, cs2_curr));
+                curr[j] = (prev[j] + s1_delete_cost)
+                    .min(curr[j - 1] + s2_delete_costs[j - 1])
+                    .min(prev[j - 1] + self.r_cost(cs1_curr, cs2_curr));
             }
+
+            std::mem::swap(&mut prev, &mut curr);
         }
 
-        (d_mat[len_s1][len_s2] as f64).min(max_length)
+        (prev[len_s2] as f64).min(max_length)
     }
 }
 

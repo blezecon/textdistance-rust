@@ -641,7 +641,7 @@ impl ArithNcd {
 pub struct Bz2Ncd;
 
 fn bz2_compress(data: &[u8]) -> Vec<u8> {
-    let mut encoder = BzEncoder::new(Vec::new(), BzCompression::default());
+    let mut encoder = BzEncoder::new(Vec::new(), BzCompression::fast());
     encoder.write_all(data).unwrap_or(());
     encoder.finish().unwrap_or_default()
 }
@@ -686,7 +686,7 @@ impl Bz2Ncd {
 pub struct LzmaNcd;
 
 fn lzma_compress(data: &[u8]) -> Vec<u8> {
-    let mut encoder = XzEncoder::new(Vec::new(), 6);
+    let mut encoder = XzEncoder::new(Vec::new(), 0);
     encoder.write_all(data).unwrap_or(());
     encoder.finish().unwrap_or_default()
 }
@@ -727,7 +727,8 @@ impl LzmaNcd {
 pub struct ZlibNcd;
 
 fn zlib_compress(data: &[u8]) -> Vec<u8> {
-    let mut encoder = ZlibEncoder::new(Vec::new(), ZlibCompression::new(6));
+    let mut encoder =
+        ZlibEncoder::new(Vec::with_capacity(data.len() + 32), ZlibCompression::fast());
     encoder.write_all(data).unwrap_or(());
     encoder.finish().unwrap_or_default()
 }
