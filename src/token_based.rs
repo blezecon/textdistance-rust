@@ -524,30 +524,52 @@ impl MongeElkan {
             return 0.0;
         }
 
+        // If all tokens are of length 1, we can simplify similarity check to exact match.
+        let is_len_1 = seq.iter().all(|c| c.len() == 1) && other.iter().all(|c| c.len() == 1);
+
+        if is_len_1 {
+            let mut matches = 0usize;
+            if other.len() > 16 {
+                let other_set: std::collections::HashSet<char> =
+                    other.iter().map(|c| c[0]).collect();
+                for c1 in seq {
+                    if other_set.contains(&c1[0]) {
+                        matches += 1;
+                    }
+                }
+            } else {
+                for c1 in seq {
+                    let target = c1[0];
+                    if other.iter().any(|c2| c2[0] == target) {
+                        matches += 1;
+                    }
+                }
+            }
+            let total = matches as f64;
+            return total / seq.len() as f64 / seq.len() as f64;
+        }
+
         let inner: DamerauLevenshtein<char> = DamerauLevenshtein::default();
-        let mut maxes: Vec<f64> = Vec::new();
+        let mut total_sim = 0.0;
 
         for c1 in seq {
             let mut max_sim = f64::NEG_INFINITY;
             for c2 in other {
-                let sim = inner.similarity(c1, c2);
+                let sim = if c1 == c2 {
+                    c1.len() as f64
+                } else if c1.is_empty() || c2.is_empty() {
+                    0.0
+                } else {
+                    inner.similarity(c1, c2)
+                };
                 if sim > max_sim {
                     max_sim = sim;
                 }
             }
-            maxes.push(max_sim);
+            total_sim += max_sim;
         }
 
-        // Python: sum(maxes) / len(seq) / len(maxes)
-        // len(maxes) == len(seq) * len(sequences-1), but for 2 seqs it simplifies
-        // to sum(maxes) / len(seq) / len(seq)  (one comparison seq → each token maxed over other)
-        // Actually: for _calc(seq, *sequences) with one extra arg, len(maxes) = len(seq)*1
-        // so: sum / len(seq) / len(seq) => sum / len(seq)^2 ... let's follow Python exactly:
-        // maxes has len(seq)*len(sequences) entries; for 2 seqs = len(seq)*1 = len(seq)
-        // result = sum(maxes) / len(seq) / len(maxes)
-        //        = sum(maxes) / len(seq) / len(seq)   [since len(maxes)=len(seq) here]
-        let total: f64 = maxes.iter().sum();
-        total / seq.len() as f64 / maxes.len() as f64
+        total_sim / seq.len() as f64 / seq.len() as f64
     }
 
     /// Compute MongeElkan similarity between two strings.
